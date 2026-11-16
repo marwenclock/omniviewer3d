@@ -1,12 +1,12 @@
 {
-  "name": "omniview3d",
+  "name": "omniviewer3d",
   "version": "1.0.0",
-  "description": "OMNIVIEW by BANKASI MEDIA: a free, open-source, ad-free online 3D model viewer and lightweight editor that runs entirely in your browser.",
+  "description": "OMNIVIEWER by BANKASI MEDIA: a free, open-source, ad-free online 3D toolkit (viewer, converter, scaler, measure, paint and lightweight editor) that runs in your browser.",
   "scripts": {
     "predev": "node scripts/copy-libs.mjs",
     "dev": "vite",
     "prebuild": "node scripts/copy-libs.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-pages.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

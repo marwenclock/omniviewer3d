@@ -3,11 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>OMNIVIEW by BANKASI MEDIA · Free online 3D viewer</title>
-    <meta name="description" content="Free, open-source online 3D viewer and lightweight editor. Open STEP, IGES, STL, OBJ, FBX, glTF/GLB, 3DM, IFC, 3MF, PLY, USDZ and more in your browser. Measure, paint, section, scale and export. No ads, no uploads." />
+    <title>OMNIVIEWER · Free online 3D viewer, converter &amp; editor · by BANKASI MEDIA</title>
+    <meta name="description" content="Free all-in-one 3D toolkit in your browser. View, convert, scale, measure, paint and edit STL, STEP, OBJ, FBX, GLB, 3MF, IFC, 3DM and 30+ formats. No uploads, no ads, no sign-up." />
     <meta name="theme-color" content="#151515" />
-    <meta property="og:title" content="OMNIVIEW by BANKASI MEDIA" />
-    <meta property="og:description" content="Free online 3D viewer and editor. 25+ formats, no ads, files never leave your device." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OMNIVIEWER" />
+    <meta property="og:title" content="OMNIVIEWER · Free online 3D viewer, converter &amp; editor" />
+    <meta property="og:description" content="View, convert, scale, measure, paint and edit 30+ 3D formats in your browser. Free, no ads, files never leave your device." />
+    <meta name="twitter:card" content="summary" />
+    <!--head-extra--><!--/head-extra-->
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -16,8 +20,8 @@
   </head>
   <body>
     <header class="topbar" id="topbar">
-      <a class="brand" href="./" title="OMNIVIEW home">
-        <span class="logo-main" id="appName">OMNIVIEW</span>
+      <a class="brand" href="./" title="OMNIVIEWER home" aria-label="OMNIVIEWER by BANKASI MEDIA">
+        <span class="logo-main"><svg class="logo-eye" viewBox="0 0 34 22" aria-hidden="true"><path d="M1.6 11C5.6 4.6 10.9 1.6 17 1.6S28.4 4.6 32.4 11C28.4 17.4 23.1 20.4 17 20.4S5.6 17.4 1.6 11z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="17" cy="11" r="5.4" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="17" cy="11" r="2.1" fill="currentColor"/></svg><span class="logo-rest">MNIVIEWER</span></span>
         <sub class="logo-by">by <span class="logo-bankasi">BANKASI</span><sup class="logo-sup">MEDIA</sup></sub>
       </a>
 
@@ -123,9 +127,11 @@
 
         <div class="welcome" id="welcome">
           <div class="welcome-inner">
-            <div class="eyebrow">[free 3d viewer + editor]</div>
-            <h1>View any <span class="glow">3D model</span>.<br />Right in your browser.</h1>
-            <p class="lede">Open CAD, mesh and BIM files, then measure, paint, section, scale and export them. Your files never leave your device.</p>
+            <!--hero-->
+            <div class="eyebrow">[free 3d tool suite]</div>
+            <h1>Every 3D file.<br />One free <span class="glow">toolkit</span>.</h1>
+            <p class="lede">View, convert, scale, measure, paint and edit 3D models right in your browser. 30+ formats, no uploads, no ads, no sign-up.</p>
+            <!--/hero-->
             <div class="cards">
               <button class="card card-light" data-action="open">
                 <span class="card-label">[open]</span>
@@ -148,6 +154,7 @@
               <div id="examples"></div>
             </div>
             <div class="formats" id="formatList"></div>
+            <!--seo--><!--/seo-->
             <div class="free-note">
               <i data-icon="heart"></i>
               <div>
@@ -186,6 +193,7 @@
     </footer>
 
     <input type="file" id="fileInput" multiple hidden />
+    <script id="page-config" type="application/json">{}</script>
     <dialog id="modal" class="modal"><div class="modal-card" id="modalCard"></div></dialog>
     <div class="toasts" id="toasts"></div>
     <div class="tooltip" id="tooltip"></div>

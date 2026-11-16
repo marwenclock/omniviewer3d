@@ -11,7 +11,7 @@ export interface FormatInfo {
   companions?: boolean;
 }
 
-/** Every format OMNIVIEW can open. Used for the file picker and the "supported formats" list. */
+/** Every format OMNIVIEWER can open. Used for the file picker and the "supported formats" list. */
 export const FORMATS: FormatInfo[] = [
   { ext: ['glb', 'gltf'], name: 'glTF / GLB', companions: true },
   { ext: ['obj'], name: 'Wavefront OBJ (+MTL)', companions: true },

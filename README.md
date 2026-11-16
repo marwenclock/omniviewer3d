@@ -1,8 +1,8 @@
-# OMNIVIEW <sub>by BANKASI<sup>MEDIA</sup></sub>
+# 👁 OMNIVIEWER <sub>by BANKASI<sup>MEDIA</sup></sub>
 
-**A free, open-source online 3D viewer and lightweight editor.** Open almost any 3D file in your browser, then measure, paint, section, scale, edit and export it. No ads, no accounts, no uploads: your files never leave your device.
+**A free, open-source, all-in-one 3D toolkit in your browser:** view, convert, scale, measure, paint and edit almost any 3D file. No ads, no accounts, no uploads: your files never leave your device.
 
-**Live site:** https://marwenclock.github.io/omniview3d/
+**Live site:** https://marwenclock.github.io/omniviewer3d/
 
 > Completely free and ad-free. To support hosting and development, donations are welcome (coming soon).
 
@@ -51,16 +51,27 @@ Drop a model together with its textures, `.mtl` or `.bin` files, a whole folder,
 - Edit material colour, metalness, roughness and opacity
 - Undo / redo for everything
 
+## Tool pages
+
+Every format, conversion and tool has its own landing page (generated at build time from [`scripts/seo-data.mjs`](scripts/seo-data.mjs)), for example:
+
+- Viewers: `/stl-viewer/`, `/step-viewer/`, `/obj-viewer/`, `/ifc-viewer/`, `/3dm-viewer/` … (26)
+- Converters: `/step-to-stl/`, `/obj-to-glb/`, `/fbx-to-glb/`, `/glb-to-usdz/` … (30). The export window opens with the target format ready.
+- Tools: `/convert/`, `/scale/`, `/unit-converter/`, `/measure/`, `/stl-volume-calculator/`, `/paint/`, `/editor/`
+
+Each page has its own title, description, how-to, FAQ and structured data, plus `sitemap.xml` and `robots.txt`.
+Set the public address in `SITE_URL` ([`scripts/seo.mjs`](scripts/seo.mjs)) or as an environment variable when building.
+
 ## Open a model from a link
 
 ```
-https://marwenclock.github.io/omniview3d/#model=https://example.com/model.glb
+https://marwenclock.github.io/omniviewer3d/#model=https://example.com/model.glb
 ```
 
 Several files (e.g. OBJ + MTL + textures) are separated with commas. Add `&embed=1` for an embeddable, chrome-free view:
 
 ```html
-<iframe src="https://marwenclock.github.io/omniview3d/#model=https://example.com/model.glb&embed=1" width="640" height="480" style="border:0" allowfullscreen></iframe>
+<iframe src="https://marwenclock.github.io/omniviewer3d/#model=https://example.com/model.glb&embed=1" width="640" height="480" style="border:0" allowfullscreen></iframe>
 ```
 
 The server hosting the file must allow cross-origin downloads (GitHub raw links, most CDNs and public cloud-storage links do).
@@ -82,8 +93,8 @@ The server hosting the file must allow cross-origin downloads (GitHub raw links,
 ## Run locally
 
 ```bash
-git clone https://github.com/marwenclock/omniview3d.git
-cd omniview3d
+git clone https://github.com/marwenclock/omniviewer3d.git
+cd omniviewer3d
 npm install
 npm run dev
 ```
@@ -96,7 +107,7 @@ To switch on donations, set `donateUrl` in [`src/config.ts`](src/config.ts).
 
 [three.js](https://threejs.org) · [occt-import-js](https://github.com/kovacsv/occt-import-js) (OpenCascade, for STEP/IGES/BREP) · [web-ifc](https://github.com/ThatOpen/engine_web-ifc) · [rhino3dm](https://github.com/mcneel/rhino3dm) · [fflate](https://github.com/101arrowz/fflate) · [Vite](https://vite.dev)
 
-Inspired by the excellent [Online 3D Viewer](https://3dviewer.net). OMNIVIEW is an independent project with its own code.
+Inspired by the excellent [Online 3D Viewer](https://3dviewer.net). OMNIVIEWER is an independent project with its own code.
 
 ## Licence
 

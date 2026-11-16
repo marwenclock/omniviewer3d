@@ -66,12 +66,16 @@ const paint = new PaintTool(viewer, history);
 measure.format = (v) => fmtLen(v, state.unit);
 
 // ------------------------------------------------------------------ static UI setup
-document.title = `${CONFIG.appName} by ${CONFIG.brandName} ${CONFIG.brandSup} · Free online 3D viewer`;
-$('#appName').textContent = CONFIG.appName;
+/** Set by the landing page (format viewer, converter or tool page) the visitor arrived on. */
+interface PageConfig { kind?: 'viewer' | 'convert' | 'tool'; from?: string; to?: ExportId; tool?: string }
+let PAGE: PageConfig = {};
+try { PAGE = JSON.parse($('#page-config')?.textContent || '{}'); } catch { /* defaults */ }
 ($('#repoLink') as HTMLAnchorElement).href = CONFIG.repoUrl;
 $('#year').textContent = String(new Date().getFullYear());
 ($('#fileInput') as HTMLInputElement).accept = ACCEPT;
-$('#formatList').innerHTML = FORMATS.map((f) => `<span class="fmt" title="${esc(f.name)}">${f.ext.map((e) => '.' + e).join(' ')}</span>`).join('');
+$('#formatList').innerHTML = FORMATS.map((f) => f.ext[0] === 'zip'
+  ? `<span class="fmt" title="${esc(f.name)}">.zip</span>`
+  : `<a class="fmt" href="${f.ext[0]}-viewer/" title="${esc(f.name)} viewer">${f.ext.map((e) => '.' + e).join(' ')}</a>`).join('');
 $('#examples').innerHTML = EXAMPLES.map((e, i) => `<button class="chip" data-example="${i}">${esc(e.label)}</button>`).join('');
 hydrateIcons();
 
@@ -114,6 +118,7 @@ async function openFiles(files: File[], urls: string[] | null = null) {
     renderAll();
     if (res.warnings.length) toast('Some files could not be loaded:\n' + res.warnings.join('\n'), true);
     else toast(`Opened ${state.modelName}`);
+    applyPageIntent();
   } catch (err: any) {
     console.error(err);
     toast(err?.message || String(err), true);
@@ -135,8 +140,30 @@ async function openUrls(urls: string[]) {
 }
 
 function history_replaceHash(urls: string[]) {
+  // Full path: pages in sub-folders use <base href="../">, which would otherwise rewrite the path.
   const h = '#model=' + urls.map(encodeURIComponent).join(',');
-  window.history.replaceState(null, '', h);
+  window.history.replaceState(null, '', location.pathname + location.search + h);
+}
+
+/** After a file opens, jump straight to what this landing page is about. */
+function applyPageIntent() {
+  const tool = PAGE.tool;
+  if (PAGE.to) { setTimeout(() => showExportDialog(PAGE.to), 350); return; }
+  if (tool === 'convert') { setTimeout(() => showExportDialog(), 350); return; }
+  if (tool === 'paint' || tool === 'measure') { setTool(tool); return; }
+  if (tool === 'edit') { editor.setGizmo('translate'); toast('Click a part, then drag the arrows to move it'); return; }
+  if (tool === 'scale' || tool === 'units' || tool === 'volume') {
+    document.body.classList.remove('no-right');
+    $$('[data-rtab]').forEach((b) => b.classList.toggle('active', b.dataset.rtab === 'details'));
+    $('#rtab-details').classList.remove('hidden');
+    $('#rtab-settings').classList.add('hidden');
+    setTimeout(() => {
+      const el = document.getElementById(tool === 'volume' ? 'sec-model' : 'sec-scale');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el?.classList.add('flash');
+      setTimeout(() => el?.classList.remove('flash'), 1800);
+    }, 400);
+  }
 }
 
 function newScene() {
@@ -154,6 +181,7 @@ function newScene() {
   window.history.replaceState(null, '', location.pathname + location.search);
   document.body.classList.add('has-model');
   editor.addPrimitive('box');
+  if (PAGE.tool === 'edit') editor.setGizmo('translate');
   viewer.fit(viewer.model, 'iso');
   refreshStats();
   renderAll();
@@ -705,7 +733,7 @@ function modelSection(): string {
   const s = state.stats;
   if (!viewer.model || !s) return '';
   const u = UNITS[state.unit].short;
-  return `<div class="section">
+  return `<div class="section" id="sec-model">
     <div class="section-head"><span class="section-title">Model</span><span class="grow"></span>
       <select data-unit style="width:auto;height:26px">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${k === state.unit ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
     <div style="font-size:13px;margin:-2px 0 10px;overflow-wrap:anywhere">${esc(state.modelName)}</div>
@@ -724,7 +752,7 @@ function modelSection(): string {
     </dl>
     ${viewer.clips.length ? `<div class="row"><label>Animation</label><select data-anim><option value="-1">None</option>${viewer.clips.map((c, i) => `<option value="${i}" ${viewer.activeAction?.getClip() === c ? 'selected' : ''}>${esc(c.name || 'Clip ' + (i + 1))}</option>`).join('')}</select></div>` : ''}
   </div>
-  <div class="section">
+  <div class="section" id="sec-scale">
     <div class="section-head"><span class="section-title">Scale & size</span></div>
     <div class="row"><label>Scale by</label><input type="number" step="any" value="1" min="0" data-scalefactor style="width:90px"/><span class="grow"></span><button class="chip" data-scaleapply>Apply</button></div>
     <div class="row"><label>Set size</label>
@@ -989,13 +1017,16 @@ function baseFileName() {
   return n || 'model';
 }
 
-function showExportDialog() {
+function showExportDialog(preferred?: ExportId) {
   if (!viewer.model) return;
+  const formats = preferred
+    ? [...EXPORT_FORMATS].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
+    : [...EXPORT_FORMATS];
   const sel = editor.selected && editor.selected !== viewer.model ? editor.selected : null;
   openModal(`<div class="eyebrow">[export]</div><h2>Export as another format</h2>
     <p>Converts the current scene, including your edits and paint, and downloads it.</p>
     ${sel ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportSel"/> Only the selected part (${esc(sel.name || 'object')})</label>` : ''}
-    <div class="export-grid">${EXPORT_FORMATS.map((f) => `<button class="export-opt" data-export="${f.id}"><div><b>${f.label}</b><small>${f.note}</small></div><span class="ext">.${f.ext}</span></button>`).join('')}</div>`);
+    <div class="export-grid">${formats.map((f) => `<button class="export-opt ${f.id === preferred ? 'preferred' : ''}" data-export="${f.id}"><div><b>${f.label}</b><small>${f.id === preferred ? 'Click to download · ' : ''}${f.note}</small></div><span class="ext">.${f.ext}</span></button>`).join('')}</div>`);
   $('#modalCard').onclick = async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-export]');
     if (!b) return;
