@@ -3,3 +3,5 @@ dist/
 public/libs/
 .DS_Store
 *.log
+.wrangler/
+.claude/
