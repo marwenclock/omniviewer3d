@@ -1,0 +1,10 @@
+{
+  "name": "OMNIVIEW by BANKASI MEDIA",
+  "short_name": "OMNIVIEW",
+  "description": "Free online 3D viewer and lightweight editor. No ads, no uploads.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#151515",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

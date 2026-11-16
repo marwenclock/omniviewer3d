@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OMNIVIEW by BANKASI MEDIA · Free online 3D viewer</title>
+    <meta name="description" content="Free, open-source online 3D viewer and lightweight editor. Open STEP, IGES, STL, OBJ, FBX, glTF/GLB, 3DM, IFC, 3MF, PLY, USDZ and more in your browser. Measure, paint, section, scale and export. No ads, no uploads." />
+    <meta name="theme-color" content="#151515" />
+    <meta property="og:title" content="OMNIVIEW by BANKASI MEDIA" />
+    <meta property="og:description" content="Free online 3D viewer and editor. 25+ formats, no ads, files never leave your device." />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar" id="topbar">
+      <a class="brand" href="./" title="OMNIVIEW home">
+        <span class="logo-main" id="appName">OMNIVIEW</span>
+        <sub class="logo-by">by <span class="logo-bankasi">BANKASI</span><sup class="logo-sup">MEDIA</sup></sub>
+      </a>
+
+      <nav class="toolbar" id="toolbar" aria-label="Tools">
+        <div class="tb-group">
+          <button class="tb" data-action="open" data-tip="Open files (O)"><i data-icon="open"></i><span>Open</span></button>
+          <button class="tb" data-action="url" data-tip="Open from URL"><i data-icon="link"></i></button>
+          <button class="tb" data-action="new" data-tip="New empty scene"><i data-icon="plus"></i></button>
+        </div>
+        <div class="tb-group needs-model">
+          <button class="tb" data-action="fit" data-tip="Fit to window (F)"><i data-icon="fit"></i></button>
+          <div class="dropdown">
+            <button class="tb" data-menu="views" data-tip="Camera views"><i data-icon="cube"></i><i data-icon="chev" class="chev"></i></button>
+            <div class="menu" id="menu-views">
+              <div class="menu-label">[view]</div>
+              <button data-view="iso">Isometric <kbd>1</kbd></button>
+              <button data-view="front">Front <kbd>2</kbd></button>
+              <button data-view="back">Back <kbd>3</kbd></button>
+              <button data-view="left">Left <kbd>4</kbd></button>
+              <button data-view="right">Right <kbd>5</kbd></button>
+              <button data-view="top">Top <kbd>6</kbd></button>
+              <button data-view="bottom">Bottom <kbd>7</kbd></button>
+              <div class="menu-sep"></div>
+              <div class="menu-label">[projection]</div>
+              <button data-projection="perspective" class="checkable">Perspective</button>
+              <button data-projection="orthographic" class="checkable">Orthographic</button>
+            </div>
+          </div>
+          <div class="dropdown">
+            <button class="tb" data-menu="display" data-tip="Display mode"><i data-icon="layers"></i><i data-icon="chev" class="chev"></i></button>
+            <div class="menu" id="menu-display">
+              <div class="menu-label">[display]</div>
+              <button data-display="shaded" class="checkable">Shaded</button>
+              <button data-display="flat" class="checkable">Flat shaded</button>
+              <button data-display="wireframe" class="checkable">Wireframe</button>
+              <button data-display="xray" class="checkable">X-ray</button>
+              <div class="menu-sep"></div>
+              <button data-toggle="edges" class="checkable">Show edges</button>
+              <button data-toggle="grid" class="checkable">Show grid</button>
+              <button data-toggle="axes" class="checkable">Show axes</button>
+              <button data-toggle="autorotate" class="checkable">Auto-rotate</button>
+            </div>
+          </div>
+        </div>
+        <div class="tb-group needs-model">
+          <button class="tb" data-tool="measure" data-tip="Measure (M)"><i data-icon="ruler"></i><span>Measure</span></button>
+          <button class="tb" data-tool="paint" data-tip="Paint (P)"><i data-icon="brush"></i><span>Paint</span></button>
+          <button class="tb" data-tool="section" data-tip="Section plane (X)"><i data-icon="section"></i></button>
+          <button class="tb" data-tool="explode" data-tip="Explode view"><i data-icon="explode"></i></button>
+        </div>
+        <div class="tb-group">
+          <button class="tb needs-model" data-gizmo="translate" data-tip="Move (W)"><i data-icon="move"></i></button>
+          <button class="tb needs-model" data-gizmo="rotate" data-tip="Rotate (E)"><i data-icon="rotate"></i></button>
+          <button class="tb needs-model" data-gizmo="scale" data-tip="Scale (R)"><i data-icon="scale"></i></button>
+          <div class="dropdown">
+            <button class="tb" data-menu="add" data-tip="Add shape"><i data-icon="shapes"></i><i data-icon="chev" class="chev"></i></button>
+            <div class="menu" id="menu-add">
+              <div class="menu-label">[add shape]</div>
+              <button data-add="box">Box</button>
+              <button data-add="sphere">Sphere</button>
+              <button data-add="cylinder">Cylinder</button>
+              <button data-add="cone">Cone</button>
+              <button data-add="torus">Torus</button>
+              <button data-add="capsule">Capsule</button>
+              <button data-add="icosahedron">Icosahedron</button>
+              <button data-add="plane">Plane</button>
+            </div>
+          </div>
+          <button class="tb" data-action="undo" data-tip="Undo (Ctrl+Z)"><i data-icon="undo"></i></button>
+          <button class="tb" data-action="redo" data-tip="Redo (Ctrl+Y)"><i data-icon="redo"></i></button>
+        </div>
+        <div class="tb-group needs-model">
+          <button class="tb" data-action="screenshot" data-tip="Screenshot"><i data-icon="camera"></i></button>
+          <button class="tb" data-action="export" data-tip="Export as another format"><i data-icon="download"></i><span>Export</span></button>
+          <button class="tb" data-action="share" data-tip="Share / embed"><i data-icon="share"></i></button>
+        </div>
+      </nav>
+
+      <div class="top-right">
+        <button class="pill-free" data-action="support" title="Free, no ads: support the project">
+          <span class="dot"></span>Free · No ads
+        </button>
+        <button class="btn-outline" data-action="support"><i data-icon="heart"></i>Support</button>
+        <a class="tb" id="repoLink" href="#" target="_blank" rel="noopener" data-tip="Source code on GitHub"><i data-icon="github"></i></a>
+        <button class="tb" data-action="theme" data-tip="Light / dark"><i data-icon="sun"></i></button>
+        <button class="tb" data-action="help" data-tip="Help & shortcuts (?)"><i data-icon="help"></i></button>
+      </div>
+    </header>
+
+    <main class="layout" id="layout">
+      <aside class="side left" id="leftPanel">
+        <div class="side-tabs">
+          <button class="side-tab active" data-tab="scene">[scene]</button>
+          <button class="side-tab" data-tab="materials">[materials]</button>
+          <button class="side-close" data-close="left" aria-label="Close panel"><i data-icon="x"></i></button>
+        </div>
+        <div class="side-body" id="tab-scene"><div class="empty">No model loaded.</div></div>
+        <div class="side-body hidden" id="tab-materials"></div>
+      </aside>
+
+      <section class="stage" id="stage">
+        <div class="viewport" id="viewport"></div>
+
+        <div class="welcome" id="welcome">
+          <div class="welcome-inner">
+            <div class="eyebrow">[free 3d viewer + editor]</div>
+            <h1>View any <span class="glow">3D model</span>.<br />Right in your browser.</h1>
+            <p class="lede">Open CAD, mesh and BIM files, then measure, paint, section, scale and export them. Your files never leave your device.</p>
+            <div class="cards">
+              <button class="card card-light" data-action="open">
+                <span class="card-label">[open]</span>
+                <span class="card-title">Drop files or browse</span>
+                <span class="card-arrow"><i data-icon="arrow"></i></span>
+              </button>
+              <button class="card" data-action="url">
+                <span class="card-label">From link</span>
+                <span class="card-title">Open a model URL</span>
+                <span class="card-arrow"><i data-icon="link"></i></span>
+              </button>
+              <button class="card" data-action="new">
+                <span class="card-label">Build</span>
+                <span class="card-title">Start an empty scene</span>
+                <span class="card-arrow"><i data-icon="plus"></i></span>
+              </button>
+            </div>
+            <div class="examples">
+              <span class="ex-label">Try an example:</span>
+              <div id="examples"></div>
+            </div>
+            <div class="formats" id="formatList"></div>
+            <div class="free-note">
+              <i data-icon="heart"></i>
+              <div>
+                <strong>Completely free. No ads. Open source.</strong>
+                <span>To support hosting and development, donations are welcome.</span>
+              </div>
+              <button class="btn-outline small" data-action="support">Support</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="drop-overlay" id="dropOverlay"><div><i data-icon="open"></i><p>Drop your model files</p><small>Include textures and .mtl / .bin files together with the model</small></div></div>
+        <div class="loading hidden" id="loading"><div class="spinner"></div><p id="loadingText">Loading…</p></div>
+
+        <div class="tool-hint hidden" id="toolHint"></div>
+        <button class="panel-toggle left" data-open="left" aria-label="Show scene panel"><i data-icon="list"></i></button>
+        <button class="panel-toggle right" data-open="right" aria-label="Show details panel"><i data-icon="info"></i></button>
+      </section>
+
+      <aside class="side right" id="rightPanel">
+        <div class="side-tabs">
+          <button class="side-tab active" data-rtab="details">[details]</button>
+          <button class="side-tab" data-rtab="settings">[settings]</button>
+          <button class="side-close" data-close="right" aria-label="Close panel"><i data-icon="x"></i></button>
+        </div>
+        <div class="side-body" id="rtab-details"></div>
+        <div class="side-body hidden" id="rtab-settings"></div>
+      </aside>
+    </main>
+
+    <footer class="statusbar" id="statusbar">
+      <span id="statusLeft">Ready</span>
+      <span class="grow"></span>
+      <span id="statusRight"></span>
+      <span class="status-brand">© <span id="year"></span> <a href="https://bankasimedia.com" target="_blank" rel="noopener">BANKASI MEDIA</a> · Free &amp; open source · No ads</span>
+    </footer>
+
+    <input type="file" id="fileInput" multiple hidden />
+    <dialog id="modal" class="modal"><div class="modal-card" id="modalCard"></div></dialog>
+    <div class="toasts" id="toasts"></div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

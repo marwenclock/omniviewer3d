@@ -1,0 +1,40 @@
+{
+  "name": "omniview3d",
+  "version": "1.0.0",
+  "description": "OMNIVIEW by BANKASI MEDIA: a free, open-source, ad-free online 3D model viewer and lightweight editor that runs entirely in your browser.",
+  "scripts": {
+    "predev": "node scripts/copy-libs.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-libs.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "occt-import-js": "^0.0.23",
+    "rhino3dm": "^8.35.0",
+    "three": "^0.187.0",
+    "web-ifc": "^0.0.79"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "private": true,
+  "keywords": [
+    "3d",
+    "viewer",
+    "three.js",
+    "gltf",
+    "obj",
+    "stl",
+    "step",
+    "ifc",
+    "fbx",
+    "3dm"
+  ]
+}
