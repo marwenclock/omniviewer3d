@@ -6,7 +6,7 @@ import { FORMATS, TARGETS, CONVERSIONS, TOOLS } from './seo-data.mjs';
  * Public address of the site, with a trailing slash. Used for canonical links and the sitemap.
  * Change it (or set SITE_URL when building) once the custom domain is live.
  */
-export const SITE_URL = (process.env.SITE_URL || 'https://marwenclock.github.io/omniviewer3d/').replace(/\/?$/, '/');
+export const SITE_URL = (process.env.SITE_URL || 'https://omniviewer3d.com/').replace(/\/?$/, '/');
 export const APP = 'OMNIVIEWER';
 export const BRAND = 'BANKASI MEDIA';
 

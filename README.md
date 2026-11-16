@@ -2,7 +2,7 @@
 
 **A free, open-source, all-in-one 3D toolkit in your browser:** view, convert, scale, measure, paint and edit almost any 3D file. No ads, no accounts, no uploads: your files never leave your device.
 
-**Live site:** https://marwenclock.github.io/omniviewer3d/
+**Live site:** https://omniviewer3d.com/
 
 > Completely free and ad-free. To support hosting and development, donations are welcome (coming soon).
 
@@ -65,13 +65,13 @@ Set the public address in `SITE_URL` ([`scripts/seo.mjs`](scripts/seo.mjs)) or a
 ## Open a model from a link
 
 ```
-https://marwenclock.github.io/omniviewer3d/#model=https://example.com/model.glb
+https://omniviewer3d.com/#model=https://example.com/model.glb
 ```
 
 Several files (e.g. OBJ + MTL + textures) are separated with commas. Add `&embed=1` for an embeddable, chrome-free view:
 
 ```html
-<iframe src="https://marwenclock.github.io/omniviewer3d/#model=https://example.com/model.glb&embed=1" width="640" height="480" style="border:0" allowfullscreen></iframe>
+<iframe src="https://omniviewer3d.com/#model=https://example.com/model.glb&embed=1" width="640" height="480" style="border:0" allowfullscreen></iframe>
 ```
 
 The server hosting the file must allow cross-origin downloads (GitHub raw links, most CDNs and public cloud-storage links do).

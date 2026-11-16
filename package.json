@@ -8,7 +8,8 @@
     "prebuild": "node scripts/copy-libs.mjs",
     "build": "vite build && node scripts/generate-pages.mjs",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy"
   },
   "license": "MIT",
   "type": "module",
@@ -22,7 +23,8 @@
   "devDependencies": {
     "@types/three": "^0.187.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "wrangler": "^4.163.0"
   },
   "private": true,
   "keywords": [
