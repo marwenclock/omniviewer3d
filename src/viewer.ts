@@ -263,7 +263,11 @@ export class Viewer {
     const dir = view ? dirs[view].clone().normalize()
       : this.perspective.position.clone().sub(this.controls.target).normalize();
     if (!view && dir.lengthSq() < 0.5) dir.copy(dirs.iso).normalize();
-    const dist = radius / Math.sin(THREE.MathUtils.degToRad(this.perspective.fov / 2));
+    // Fit the bounding sphere in whichever field of view is narrower (tall, narrow viewports too).
+    this.resize();
+    const vfov = THREE.MathUtils.degToRad(this.perspective.fov);
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.perspective.aspect);
+    const dist = radius / Math.sin(Math.min(vfov, hfov) / 2);
     this.controls.target.copy(center);
     this.perspective.position.copy(center).addScaledVector(dir, dist * 1.05);
     this.perspective.near = Math.max(dist / 1000, 1e-4);

@@ -151,6 +151,7 @@
               <span class="ex-label">Try an example:</span>
               <div id="examples"></div>
             </div>
+            <div class="recent hidden" id="recentList"></div>
             <div class="formats" id="formatList"></div>
             <!--seo--><!--/seo-->
             <div class="free-note">
@@ -165,7 +166,8 @@
         </div>
 
         <div class="drop-overlay" id="dropOverlay"><div><i data-icon="open"></i><p>Drop your model files</p><small>Include textures and .mtl / .bin files together with the model</small></div></div>
-        <div class="loading hidden" id="loading"><div class="spinner"></div><p id="loadingText">Loading…</p></div>
+        <div class="loading hidden" id="loading"><div class="spinner"></div><p id="loadingText">Loading…</p><div class="progress hidden" id="loadingBar"><i></i></div><button class="chip hidden" id="loadingCancel">Cancel</button></div>
+        <div class="unit-hint hidden" id="unitHint"></div>
 
         <div class="tool-hint hidden" id="toolHint"></div>
         <button class="panel-toggle left" data-open="left" aria-label="Show scene panel"><i data-icon="list"></i></button>

@@ -10,6 +10,12 @@ import { computeStats, UNITS, type Unit, fmtLen, fmtNum, fmtInt, type ModelStats
 import { EXPORT_FORMATS, exportModel, download, type ExportId } from './exporters';
 import { icon, hydrateIcons } from './icons';
 import { CONFIG } from './config';
+import { panels, commands, registerCommand } from './registry';
+import { ctx } from './context';
+import { MATERIALS, estimate } from './cost';
+import { listRecent, addRecent, removeRecent, clearRecent, entryFiles, type RecentEntry } from './recent';
+import { guessUnit, defaultUp, rememberPref } from './units';
+import { initFeatures } from './features';
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -28,9 +34,12 @@ function toast(msg: string, error = false) {
   setTimeout(() => el.remove(), error ? 6000 : 2600);
 }
 
-function setLoading(msg: string | null) {
+function setLoading(msg: string | null, progress: number | null = null) {
   $('#loading').classList.toggle('hidden', msg === null);
   if (msg) $('#loadingText').textContent = msg;
+  const bar = $('#loadingBar');
+  bar.classList.toggle('hidden', progress === null);
+  if (progress !== null) ($('#loadingBar i') as HTMLElement).style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
 }
 
 const EXAMPLES = [
@@ -46,11 +55,14 @@ const EXAMPLES = [
 const PAINT_COLORS = ['#e4572e', '#f3a712', '#ffd23f', '#76b041', '#17bebb', '#2e86de', '#6c5ce7', '#e84393', '#ffffff', '#9a9a9a', '#3d3d3d', '#0a0a0a'];
 
 // ------------------------------------------------------------------ app state
-type Tool = 'none' | 'measure' | 'paint' | 'section' | 'explode';
+type Tool = string;
 const state = {
   tool: 'none' as Tool,
   unit: store.get('unit', 'mm') as Unit,
   modelName: '',
+  ext: '',
+  lastFiles: null as File[] | null,
+  installPrompt: null as any,
   sourceUrls: null as string[] | null,
   stats: null as ModelStats | null,
   expanded: new Set<string>(),
@@ -102,17 +114,23 @@ async function openFiles(files: File[], urls: string[] | null = null) {
     editor.select(null);
     editor.setGizmo('none');
     history.clear();
+    document.body.classList.add('has-model');
     viewer.setModel(res.object, res.animations);
     viewer.setExplode(0);
     state.modelName = res.mainFiles.length === 1 ? res.mainFiles[0] : `${res.mainFiles.length} files`;
     state.sourceUrls = urls;
     state.expanded = new Set([res.object.uuid]);
-    // CAD and printing formats are usually Z-up and in millimetres.
+    // CAD and printing formats are usually Z-up and in millimetres; the size is sanity-checked.
     const ext = extOf(res.mainFiles[0]);
-    const zUp = ['stl', 'step', 'stp', 'iges', 'igs', 'brep', 'brp', '3mf', 'amf', 'off', 'gcode', 'gco', '3dm', 'ply', 'vox'].includes(ext);
-    viewer.setUpAxis(zUp ? 'z' : 'y');
-    if (['step', 'stp', 'iges', 'igs', 'brep', 'brp', 'stl', '3mf', 'amf', 'gcode', 'gco'].includes(ext)) setUnit('mm');
-    else if (['glb', 'gltf', 'usdz', 'usd', 'usda', 'usdc', 'ifc'].includes(ext)) setUnit('m');
+    state.ext = ext;
+    state.lastFiles = urls ? null : files;
+    viewer.setUpAxis(defaultUp(ext));
+    const size = viewer.bounds().getSize(new THREE.Vector3());
+    const guess = guessUnit(ext, Math.max(size.x, size.y, size.z));
+    setUnit(guess.unit);
+    hideUnitHint();
+    if (guess.suggest) showUnitHint(guess.unit, guess.suggest.unit, guess.suggest.why);
+    addRecent(state.modelName, urls ? null : files, urls).then(renderRecent);
     document.body.classList.add('has-model');
     refreshStats();
     renderAll();
@@ -199,9 +217,10 @@ function refreshStats(delay = 0) {
   }, delay);
 }
 
-function setUnit(u: Unit) {
+function setUnit(u: Unit, remember = false) {
   state.unit = u;
   store.set('unit', u);
+  if (remember && state.ext) rememberPref(state.ext, { unit: u });
   measure.relabel();
   renderDetails();
   updateStatus();
@@ -210,21 +229,25 @@ function setUnit(u: Unit) {
 // ------------------------------------------------------------------ tools
 function setTool(t: Tool) {
   if (state.tool === t) t = 'none';
+  panels.get(state.tool)?.onDeactivate?.();
   state.tool = t;
   measure.setActive(t === 'measure');
   paint.setActive(t === 'paint');
   if (t === 'section' && !viewer.section.enabled) viewer.setSection({ enabled: true });
   if (t === 'paint' || t === 'measure') editor.setGizmo('none');
-  const hints: Record<Tool, string> = {
+  const hints: Record<string, string> = {
     none: '',
     measure: 'Click two points to measure · snaps to corners · Esc to stop',
     paint: paint.mode === 'brush' ? 'Click and drag to brush colour onto the surface · Esc to stop' : 'Click a part to colour it · Esc to stop',
     section: 'Drag the slider in the details panel to cut through the model',
     explode: 'Use the slider in the details panel to pull parts apart',
   };
+  const panel = panels.get(t);
+  panel?.onActivate?.();
+  const hintText = panel ? panel.hint : hints[t] || '';
   const hint = $('#toolHint');
-  hint.textContent = hints[t];
-  hint.classList.toggle('hidden', !hints[t]);
+  hint.textContent = hintText;
+  hint.classList.toggle('hidden', !hintText);
   viewer.renderer.domElement.style.cursor = t === 'measure' || t === 'paint' ? 'crosshair' : '';
   if (t !== 'none') document.body.classList.remove('no-right');
   updateToolbar();
@@ -656,6 +679,8 @@ function toolSection(): string {
         <p class="note">Moves each part away from the centre. Works best on assemblies with several parts.</p>
       </div>`;
   }
+  const p = panels.get(state.tool);
+  if (p) return `<div class="section" data-panel="${p.id}"><div class="section-head"><span class="section-title">${esc(p.label)}</span><span class="grow"></span><button class="node-btn" style="opacity:1" data-tool="${p.id}" title="Close">${icon('x')}</button></div>${p.render()}</div>`;
   return '';
 }
 
@@ -786,8 +811,11 @@ function renderDetails() {
     return;
   }
   const scroll = host.scrollTop;
-  host.innerHTML = toolSection() + selectionSection() + modelSection() + supportBox();
+  host.innerHTML = toolSection() + selectionSection() + modelSection() + costSection() + supportBox();
   host.scrollTop = scroll;
+  const p = panels.get(state.tool);
+  const sec = host.querySelector<HTMLElement>('[data-panel]');
+  if (p?.bind && sec) p.bind(sec);
 }
 
 // Details panel events (delegated)
@@ -872,7 +900,7 @@ details.addEventListener('change', (e) => {
   if (d.msnap !== undefined) measure.snap = t.checked;
   if (d.secon !== undefined) viewer.setSection({ enabled: t.checked });
   if (d.secflip !== undefined) viewer.setSection({ flip: t.checked });
-  if (d.unit !== undefined) setUnit(t.value as Unit);
+  if (d.unit !== undefined) { setUnit(t.value as Unit, true); hideUnitHint(); }
   if (d.anim !== undefined) viewer.playClip(Number(t.value));
   if (d.matidx !== undefined) { store.set('matIndex', t.value); renderDetails(); }
   if (d.rename !== undefined && o) editor.rename(o, t.value);
@@ -949,17 +977,19 @@ function renderSettings() {
     <div class="section">
       <div class="section-head"><span class="section-title">Interface</span></div>
       <div class="row"><label>Theme</label><div class="seg"><button class="${document.documentElement.dataset.theme === 'dark' ? 'active' : ''}" data-themeset="dark">Dark</button><button class="${document.documentElement.dataset.theme === 'light' ? 'active' : ''}" data-themeset="light">Light</button></div></div>
-      <p class="note">Your files are processed locally in this browser. Nothing is uploaded.</p>
+      <div class="row"><label>App</label><button class="chip" data-install>${icon('download')}Install ${CONFIG.appName}</button></div>
+      <p class="note">Install it to use ${CONFIG.appName} like a desktop app, also offline. Your files are processed locally in this browser. Nothing is uploaded.</p>
     </div>${supportBox()}`;
   ($('[data-light]', host) as HTMLSelectElement).value = store.get('light', 'studio');
 }
 
 const settings = $('#rtab-settings');
 settings.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('[data-install]')) { installApp(); return; }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-up],[data-proj],[data-bgswatch],[data-bgreset],[data-themeset]');
   if (!el) return;
   const d = el.dataset;
-  if (d.up) viewer.setUpAxis(d.up as 'y' | 'z');
+  if (d.up) { viewer.setUpAxis(d.up as 'y' | 'z'); if (state.ext) rememberPref(state.ext, { up: d.up as 'y' | 'z' }); }
   if (d.proj) viewer.setProjection(d.proj as any);
   if (d.bgswatch) { state.bgCustom = d.bgswatch; store.set('bg', d.bgswatch); viewer.setBackground(d.bgswatch); }
   if ('bgreset' in d) { state.bgCustom = null; store.set('bg', ''); applyTheme(document.documentElement.dataset.theme as any); }
@@ -1127,10 +1157,190 @@ function readHash() {
   if (model) openUrls(model.split(',').map((u) => decodeURIComponent(u)));
 }
 
+Object.assign(ctx, {
+  viewer, editor, history, toast, setLoading,
+  refresh: () => { viewer.rebaseExplode(); refreshStats(50); renderTree(); renderMaterials(); },
+  renderDetails,
+  unit: () => state.unit,
+  fmtLen: (v: number, digits = 3) => fmtLen(v, state.unit, digits),
+  setTool: (id: string) => setTool(id),
+  activeTool: () => state.tool,
+  selectObject,
+  openFiles,
+  modelName: () => state.modelName,
+  baseFileName,
+  openModal,
+  closeModal: () => modal.close(),
+});
+initFeatures();
+registerCoreCommands();
+
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 renderAll();
+renderRecent();
+
+// Offline support: cache the app after the first visit (production builds only).
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; renderSettings(); });
+window.addEventListener('appinstalled', () => { state.installPrompt = null; toast(`${CONFIG.appName} installed`); renderSettings(); });
+function installApp() {
+  if (!state.installPrompt) { toast('Use your browser menu → "Install app" (or "Add to Home Screen" on iPhone)'); return; }
+  state.installPrompt.prompt();
+  state.installPrompt.userChoice.finally(() => { state.installPrompt = null; renderSettings(); });
+}
 readHash();
 window.addEventListener('hashchange', readHash);
 
 // expose for debugging in the console
 (window as any).omniview = { viewer, editor, history, measure, paint };
+
+
+// ------------------------------------------------------------------ unit hint
+function showUnitHint(current: Unit, suggest: Unit, why: string) {
+  const el = $('#unitHint');
+  el.innerHTML = `<span>${esc(why)}</span>
+    <button class="chip" data-unithint="${suggest}">Use ${UNITS[suggest].label.toLowerCase()}</button>
+    <button class="chip" data-unithint="${current}">Keep ${UNITS[current].short}</button>`;
+  el.classList.remove('hidden');
+}
+function hideUnitHint() { $('#unitHint').classList.add('hidden'); }
+$('#unitHint').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-unithint]');
+  if (!b) return;
+  setUnit(b.dataset.unithint as Unit, true);
+  hideUnitHint();
+  toast(`Units set to ${UNITS[state.unit].label.toLowerCase()} · remembered for .${state.ext} files`);
+});
+
+// ------------------------------------------------------------------ recent files
+let recentCache: RecentEntry[] = [];
+async function renderRecent() {
+  recentCache = await listRecent();
+  const host = $('#recentList');
+  host.classList.toggle('hidden', !recentCache.length);
+  if (!recentCache.length) { host.innerHTML = ''; return; }
+  const ago = (t: number) => {
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  };
+  host.innerHTML = `<div class="recent-head"><span>Recent files</span><button class="link-btn" data-recentclear>Clear</button></div>
+    <div class="recent-grid">${recentCache.map((r, i) => `<div class="recent-item" data-recent="${i}" role="button" tabindex="0">
+      ${icon(r.urls ? 'link' : 'mesh')}<span class="ri-name" title="${esc(r.name)}">${esc(r.name)}</span>
+      <span class="ri-meta">${ago(r.date)}${r.size ? ' · ' + (r.size / 1048576).toFixed(1) + ' MB' : ''}</span>
+      <button class="node-btn" data-recentdel="${i}" title="Remove from list">${icon('x')}</button></div>`).join('')}</div>
+    <p class="note">Kept only in this browser.</p>`;
+}
+$('#recentList').addEventListener('click', async (e) => {
+  const t = e.target as HTMLElement;
+  if (t.closest('[data-recentclear]')) { await clearRecent(); renderRecent(); return; }
+  const del = t.closest<HTMLElement>('[data-recentdel]');
+  if (del) { await removeRecent(recentCache[Number(del.dataset.recentdel)].id); renderRecent(); return; }
+  const item = t.closest<HTMLElement>('[data-recent]');
+  if (!item) return;
+  const r = recentCache[Number(item.dataset.recent)];
+  if (r.urls) openUrls(r.urls); else openFiles(entryFiles(r));
+});
+
+// ------------------------------------------------------------------ print estimate
+const costPrefs = () => {
+  const d = { material: 'pla', infill: 20, wall: 1.2, price: '', diameter: 1.75, copies: 1 };
+  try { return { ...d, ...JSON.parse(store.get('cost', '{}')) }; } catch { return d; }
+};
+function costSection(): string {
+  const s = state.stats;
+  if (!viewer.model || !s || !s.meshes || s.volume <= 0) return '';
+  const p = costPrefs();
+  const mat = MATERIALS.find((m) => m.id === p.material) ?? MATERIALS[0];
+  const price = p.price === '' ? mat.price : Number(p.price);
+  const toCm = UNITS[state.unit].toMeters * 100;
+  const r = estimate({
+    volumeCm3: s.volume * toCm ** 3, areaCm2: s.area * toCm ** 2, material: mat,
+    infill: p.infill / 100, wallMm: p.wall, pricePerKg: price, diameterMm: p.diameter, copies: p.copies,
+  });
+  const unitless = state.unit === 'u';
+  return `<div class="section" id="sec-cost">
+    <div class="section-head"><span class="section-title">Print estimate</span></div>
+    ${unitless ? '<p class="note" style="margin-top:0">Pick real units above (e.g. millimetres) for a meaningful estimate.</p>' : ''}
+    <div class="cost-big"><div><b>${fmtNum(r.grams, 1)} g</b><span>weight</span></div>
+      ${mat.resin ? `<div><b>${fmtNum(r.grams / mat.density, 1)} ml</b><span>resin</span></div>` : `<div><b>${fmtNum(r.meters, 2)} m</b><span>filament</span></div>`}
+      <div><b>${fmtNum(r.cost, 2)}</b><span>material cost</span></div></div>
+    <div class="row"><label>Material</label><select data-cost="material">${MATERIALS.map((m) => `<option value="${m.id}" ${m.id === mat.id ? 'selected' : ''}>${m.name}</option>`).join('')}</select></div>
+    ${mat.resin ? '' : `<div class="row"><label>Infill</label><input type="range" min="0" max="100" step="5" value="${p.infill}" data-cost="infill"/><span class="cost-val">${p.infill}%</span></div>
+    <div class="row"><label>Walls</label><input type="number" step="0.1" min="0" value="${p.wall}" data-cost="wall"/><span class="cost-unit">mm</span></div>`}
+    <div class="row"><label>Price / kg</label><input type="number" step="0.5" min="0" value="${price}" data-cost="price"/><span class="cost-unit">${mat.resin ? 'per kg' : ''}</span></div>
+    ${mat.resin ? '' : `<div class="row"><label>Filament</label><select data-cost="diameter"><option value="1.75" ${p.diameter == 1.75 ? 'selected' : ''}>1.75 mm</option><option value="2.85" ${p.diameter == 2.85 ? 'selected' : ''}>2.85 mm</option></select></div>`}
+    <div class="row"><label>Copies</label><input type="number" step="1" min="1" value="${p.copies}" data-cost="copies"/></div>
+    <p class="note">Estimate from the model volume (${s.closed ? 'watertight' : 'not watertight, so less reliable'}), ${mat.resin ? 'printed solid' : 'with walls and infill'}. Solid part: ${fmtNum(r.solidGrams, 1)} g. Supports and purge are not included.</p>
+  </div>`;
+}
+details.addEventListener('change', (e) => {
+  const t = e.target as HTMLInputElement;
+  const k = t.dataset.cost;
+  if (!k) return;
+  const p = costPrefs();
+  if (k === 'material') { p.material = t.value; p.price = ''; }
+  else if (k === 'price') p.price = t.value;
+  else (p as any)[k] = Number(t.value);
+  store.set('cost', JSON.stringify(p));
+  renderDetails();
+});
+details.addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.dataset.cost === 'infill') (t.nextElementSibling as HTMLElement).textContent = t.value + '%';
+});
+
+// ------------------------------------------------------------------ core commands (command palette)
+function registerCoreCommands() {
+  const has = () => !!viewer.model;
+  registerCommand(
+    { id: 'open', label: 'Open files…', group: 'File', shortcut: 'O', keywords: 'load import browse', run: () => runAction('open') },
+    { id: 'url', label: 'Open from URL…', group: 'File', keywords: 'link web', run: () => runAction('url') },
+    { id: 'new', label: 'New empty scene', group: 'File', keywords: 'blank start', run: () => runAction('new') },
+    { id: 'export', label: 'Export / convert…', group: 'File', keywords: 'save download convert stl obj glb ply usdz 3mf', run: () => runAction('export'), enabled: has },
+    { id: 'screenshot', label: 'Save screenshot…', group: 'File', keywords: 'image png picture', run: () => runAction('screenshot'), enabled: has },
+    { id: 'share', label: 'Share / embed…', group: 'File', keywords: 'link iframe', run: () => runAction('share'), enabled: has },
+    { id: 'install', label: 'Install app (works offline)', group: 'File', keywords: 'pwa offline desktop', run: installApp },
+    { id: 'fit', label: 'Fit to window', group: 'View', shortcut: 'F', keywords: 'zoom extents', run: () => runAction('fit'), enabled: has },
+    ...(['iso', 'front', 'back', 'left', 'right', 'top', 'bottom'] as ViewName[]).map((v, i) => ({ id: 'view-' + v, label: `View: ${v[0].toUpperCase() + v.slice(1)}`, group: 'View', shortcut: String(i + 1), keywords: 'camera', run: () => viewer.fit(viewer.model, v), enabled: has })),
+    { id: 'ortho', label: 'Toggle orthographic camera', group: 'View', keywords: 'perspective projection', run: () => viewer.setProjection(viewer.camera === viewer.ortho ? 'perspective' : 'orthographic'), enabled: has },
+    ...(['shaded', 'flat', 'wireframe', 'xray'] as DisplayMode[]).map((m) => ({ id: 'display-' + m, label: `Display: ${m === 'xray' ? 'X-ray' : m[0].toUpperCase() + m.slice(1)}`, group: 'View', keywords: 'render mode', run: () => { viewer.setDisplayMode(m); updateToolbar(); }, enabled: has })),
+    { id: 'edges', label: 'Toggle edges', group: 'View', keywords: 'outline lines', run: () => { viewer.setEdges(!viewer.showEdges); updateToolbar(); }, enabled: has },
+    { id: 'grid', label: 'Toggle grid', group: 'View', run: () => { viewer.setGrid(!viewer.showGrid); updateToolbar(); } },
+    { id: 'axes', label: 'Toggle axes', group: 'View', run: () => { viewer.setAxes(!viewer.showAxes); updateToolbar(); } },
+    { id: 'upaxis', label: 'Switch Y-up / Z-up', group: 'View', keywords: 'orientation rotate', run: () => { viewer.setUpAxis(viewer.upAxis === 'y' ? 'z' : 'y'); if (state.ext) rememberPref(state.ext, { up: viewer.upAxis }); }, enabled: has },
+    { id: 'theme', label: 'Toggle light / dark theme', group: 'View', run: () => runAction('theme') },
+    { id: 'measure', label: 'Measure', group: 'Tools', shortcut: 'M', keywords: 'distance ruler angle', run: () => setTool('measure'), enabled: has },
+    { id: 'paint', label: 'Paint', group: 'Tools', shortcut: 'P', keywords: 'colour color brush', run: () => setTool('paint'), enabled: has },
+    { id: 'section', label: 'Section plane', group: 'Tools', shortcut: 'X', keywords: 'clip cut slice', run: () => setTool('section'), enabled: has },
+    { id: 'explode', label: 'Explode view', group: 'Tools', keywords: 'assembly parts apart', run: () => setTool('explode'), enabled: has },
+    { id: 'scale', label: 'Scale & resize…', group: 'Tools', keywords: 'size dimensions resize units inches mm', run: () => applyIntent('scale'), enabled: has },
+    { id: 'cost', label: 'Print cost & weight estimate', group: 'Tools', keywords: 'filament price grams', run: () => scrollToSection('sec-cost'), enabled: has },
+    { id: 'move', label: 'Move selected', group: 'Edit', shortcut: 'W', run: () => editor.setGizmo('translate'), enabled: has },
+    { id: 'rotate', label: 'Rotate selected', group: 'Edit', shortcut: 'E', run: () => editor.setGizmo('rotate'), enabled: has },
+    { id: 'scale-gizmo', label: 'Scale selected (handles)', group: 'Edit', shortcut: 'R', run: () => editor.setGizmo('scale'), enabled: has },
+    { id: 'dup', label: 'Duplicate selected', group: 'Edit', shortcut: 'Ctrl+D', run: () => editor.duplicateSelected(), enabled: () => !!editor.selected },
+    { id: 'del', label: 'Delete selected', group: 'Edit', shortcut: 'Del', run: () => editor.deleteSelected(), enabled: () => !!editor.selected },
+    { id: 'undo', label: 'Undo', group: 'Edit', shortcut: 'Ctrl+Z', run: () => history.undo(), enabled: () => history.canUndo },
+    { id: 'redo', label: 'Redo', group: 'Edit', shortcut: 'Ctrl+Y', run: () => history.redo(), enabled: () => history.canRedo },
+    { id: 'floor', label: 'Drop to floor', group: 'Edit', run: () => editor.dropToFloor(), enabled: has },
+    { id: 'center', label: 'Centre on origin', group: 'Edit', run: () => editor.centerOnOrigin(), enabled: has },
+    ...(['box', 'sphere', 'cylinder', 'cone', 'torus', 'capsule', 'icosahedron', 'plane'] as Primitive[]).map((k) => ({ id: 'add-' + k, label: `Add ${k}`, group: 'Add', keywords: 'shape primitive', run: () => { editor.addPrimitive(k); document.body.classList.add('has-model'); } })),
+    { id: 'help', label: 'Help & keyboard shortcuts', group: 'Help', shortcut: '?', run: () => runAction('help') },
+  );
+}
+
+function scrollToSection(id: string) {
+  document.body.classList.remove('no-right');
+  $$('[data-rtab]').forEach((b) => b.classList.toggle('active', b.dataset.rtab === 'details'));
+  $('#rtab-details').classList.remove('hidden');
+  $('#rtab-settings').classList.add('hidden');
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el?.classList.add('flash');
+    setTimeout(() => el?.classList.remove('flash'), 1800);
+  });
+}
+function applyIntent(tool: string) { const prev = PAGE.tool; PAGE.tool = tool; const to = PAGE.to; PAGE.to = undefined; applyPageIntent(); PAGE.tool = prev; PAGE.to = to; }

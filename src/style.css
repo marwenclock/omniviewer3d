@@ -452,3 +452,33 @@ body:not(.has-model) .side { display: none !important; }
 .welcome { overflow-x: hidden; }
 .cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .tools-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+
+/* ------------------------------------------------------------ batch 1: progress, unit hint, recent, cost */
+.progress { width: 220px; height: 3px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width 0.2s; }
+.unit-hint {
+  position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+  max-width: min(640px, calc(100% - 24px)); padding: 10px 12px 10px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line-2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); font-size: 12.5px; color: var(--ink-2);
+}
+.unit-hint span { flex: 1 1 260px; }
+.recent { margin-top: 26px; }
+.recent-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.link-btn { font-size: 12px; color: var(--muted); text-decoration: underline; }
+.link-btn:hover { color: var(--ink); }
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.recent-item {
+  display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 9px 8px 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: left;
+}
+.recent-item:hover { border-color: var(--line-strong); }
+.recent-item > .icon { grid-row: span 2; width: 16px; height: 16px; color: var(--muted); }
+.recent-item .ri-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-item .ri-meta { grid-column: 2; font-size: 11px; color: var(--muted); }
+.recent-item .node-btn { grid-column: 3; grid-row: 1 / span 2; }
+.recent-item:hover .node-btn { opacity: 1; }
+.cost-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
+.cost-big div { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--surface); }
+.cost-big b { display: block; font: 500 14px var(--mono); color: var(--hi); white-space: nowrap; }
+.cost-big span { font-size: 10.5px; color: var(--muted); }
+.cost-val, .cost-unit { font: 11px var(--mono); color: var(--muted); min-width: 34px; text-align: right; }
