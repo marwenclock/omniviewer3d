@@ -29,6 +29,7 @@ export class Editor {
     this.transform.setSize(0.9);
     const helper = this.transform.getHelper();
     helper.userData.helper = true;
+    helper.userData.noShot = true;
     viewer.overlay.add(helper);
     this.transform.addEventListener('dragging-changed', (e: any) => {
       viewer.controls.enabled = !e.value;
@@ -54,6 +55,7 @@ export class Editor {
     (this.boxHelper.material as THREE.LineBasicMaterial).depthTest = false;
     this.boxHelper.renderOrder = 997;
     this.boxHelper.userData.helper = true;
+    this.boxHelper.userData.noShot = true;
     this.boxHelper.visible = false;
     this.boxHelper.raycast = () => {};
     viewer.overlay.add(this.boxHelper);

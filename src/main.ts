@@ -19,6 +19,7 @@ import { initFeatures } from './features';
 import { capsEnabled, setCaps } from './features/caps';
 import { showBatchDialog } from './features/batch';
 import { openPalette, registerContextAction } from './features/palette';
+import { cameraString, applyCamera } from './features/views';
 import { CAD_QUALITY, cadQuality } from './cad';
 
 // ------------------------------------------------------------------ helpers
@@ -653,20 +654,28 @@ function toolSection(): string {
   const u = UNITS[state.unit].short;
   switch (state.tool) {
     case 'measure': {
-      const items = measure.list.slice().reverse().map((m) => `
+      const items = measure.list.slice().reverse().map((m) => m.kind === 'circle' ? `
+        <div class="measure-item">
+          <div class="mi-body">
+            <div class="mi-main">#${m.id} &nbsp;⌀ ${fmtLen(m.distance, state.unit)}</div>
+            <div class="mi-sub">Radius ${fmtLen(m.radius!, state.unit)} · circumference ${fmtLen(Math.PI * m.distance, state.unit)}</div>
+          </div>
+          <button class="node-btn" style="opacity:1" data-mremove="${m.id}" title="Remove">${icon('x')}</button>
+        </div>` : `
         <div class="measure-item">
           <div class="mi-body">
             <div class="mi-main">#${m.id} &nbsp;${fmtLen(m.distance, state.unit)}</div>
             <div class="mi-sub">ΔX ${fmtNum(m.delta.x)} · ΔY ${fmtNum(m.delta.y)} · ΔZ ${fmtNum(m.delta.z)} ${u}</div>
             ${m.angle !== null ? `<div class="mi-sub">Angle between faces ${fmtNum(m.angle, 2)}°</div>` : ''}
-            ${m.parallelDistance !== null ? `<div class="mi-sub">Parallel faces gap ${fmtLen(m.parallelDistance, state.unit)}</div>` : ''}
+            ${m.parallelDistance !== null ? `<div class="mi-sub">Parallel faces gap ${fmtLen(m.parallelDistance, state.unit)}</div>` : m.planeDistance !== null ? `<div class="mi-sub">To first face's plane ${fmtLen(m.planeDistance, state.unit)}</div>` : ''}
           </div>
           <button class="node-btn" style="opacity:1" data-mremove="${m.id}" title="Remove">${icon('x')}</button>
         </div>`).join('');
       return `<div class="section">
         <div class="section-head"><span class="section-title">Measure</span><span class="grow"></span>
           ${measure.list.length ? `<button class="chip danger" data-mclear>${icon('trash')}Clear</button>` : ''}</div>
-        <p class="note" style="margin-top:0">Click a first point, then a second point on the model.</p>
+        <div class="seg" style="margin-bottom:8px"><button class="${measure.mode === 'distance' ? 'active' : ''}" data-mmode="distance">Distance</button><button class="${measure.mode === 'circle' ? 'active' : ''}" data-mmode="circle">Circle / hole</button></div>
+        <p class="note" style="margin-top:0">${measure.mode === 'circle' ? `Click three points around a hole or round edge${measure.pendingCount ? ` (${measure.pendingCount}/3)` : ''}.` : 'Click a first point, then a second point on the model.'}</p>
         <label class="check"><input type="checkbox" data-msnap ${measure.snap ? 'checked' : ''}/> Snap to corners</label>
         ${items || ''}
       </div>`;
@@ -844,7 +853,7 @@ function renderDetails() {
 const details = $('#rtab-details');
 details.addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
-  const el = t.closest<HTMLElement>('[data-sel],[data-mremove],[data-mclear],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply]');
+  const el = t.closest<HTMLElement>('[data-sel],[data-mremove],[data-mclear],[data-mmode],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply]');
   if (!el) return;
   const d = el.dataset;
   const o = editor.selected;
@@ -867,6 +876,7 @@ details.addEventListener('click', (e) => {
   }
   if (d.mremove) measure.remove(Number(d.mremove));
   if ('mclear' in d) measure.clear();
+  if (d.mmode) { measure.mode = d.mmode as 'distance' | 'circle'; measure.setActive(true); renderDetails(); }
   if (d.pmode) { paint.mode = d.pmode as any; setTool('paint'); setTool('paint'); }
   if (d.pswatch) { paint.color.set(d.pswatch); renderDetails(); }
   if (d.secaxis) viewer.setSection({ axis: d.secaxis as Axis });
@@ -1139,7 +1149,7 @@ function showShareDialog() {
     return;
   }
   const base = location.origin + location.pathname;
-  const link = `${base}#model=${state.sourceUrls.map(encodeURIComponent).join(',')}`;
+  const link = `${base}#model=${state.sourceUrls.map(encodeURIComponent).join(',')}&cam=${cameraString()}`;
   const embed = `<iframe src="${link}&embed=1" width="640" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
   openModal(`<h2>Share & embed</h2>
     <div class="field-label" style="margin:10px 0 6px">Link</div><textarea rows="2" readonly id="shareLink">${esc(link)}</textarea>
@@ -1188,7 +1198,8 @@ function readHash() {
     a.innerHTML = `${CONFIG.appName} <span style="opacity:.6">by ${CONFIG.brandName} ${CONFIG.brandSup}</span>`;
     $('#stage').appendChild(a);
   }
-  if (model) openUrls(model.split(',').map((u) => decodeURIComponent(u)));
+  const cam = params.get('cam');
+  if (model) openUrls(model.split(',').map((u) => decodeURIComponent(u))).then(() => { if (cam) applyCamera(cam, false); });
 }
 
 Object.assign(ctx, {

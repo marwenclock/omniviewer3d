@@ -4,6 +4,7 @@ import { initCutTools } from './cut';
 import { initCaps } from './caps';
 import { initBatch } from './batch';
 import { initPaletteAndMenu } from './palette';
+import { initViews } from './views';
 
 export function initFeatures() {
   initPrintTools();
@@ -11,4 +12,5 @@ export function initFeatures() {
   initCaps();
   initBatch();
   initPaletteAndMenu();
+  initViews();
 }

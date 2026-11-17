@@ -46,6 +46,8 @@ export class Viewer {
   private listeners = new Set<() => void>();
   private frameHooks = new Set<(dt: number) => void>();
   background = '#151515';
+  /** temporary visual overrides (inspector modes) that must be undone while exporting */
+  readonly cleanHooks = new Set<{ off(): void; on(): void }>();
 
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true, stencil: true });
@@ -226,9 +228,11 @@ export class Viewer {
   async withCleanModel<T>(fn: () => Promise<T>): Promise<T> {
     const mode = this.displayMode, edges = this.showEdges, sec = this.section.enabled;
     this.displayMode = 'shaded'; this.showEdges = false; this.section.enabled = false;
+    this.cleanHooks.forEach((h) => h.off());
     this.refreshMaterials();
     try { return await fn(); }
     finally {
+      this.cleanHooks.forEach((h) => h.on());
       this.displayMode = mode; this.showEdges = edges; this.section.enabled = sec;
       this.refreshMaterials();
     }
@@ -471,18 +475,42 @@ export class Viewer {
   }
 
   /** Screenshot as a PNG data URL, optionally at a multiple of the current size, with a transparent background. */
-  screenshot(scale = 1, transparent = false): string {
+  screenshot(scale = 1, transparent = false, annotations = true): string {
     const prevBg = this.background;
     const w = this.container.clientWidth, h = this.container.clientHeight;
-    const overlayVisible = this.overlay.visible;
-    this.overlay.visible = false;
+    // Hide viewer chrome (grid, gizmos, selection box); keep measurements, dimensions and section caps.
+    const hidden: THREE.Object3D[] = [];
+    this.overlay.traverse((o) => {
+      const chrome = o === this.grid || o === this.axes || o === this.sectionHelper || o.userData.noShot;
+      if (o.visible && (chrome || (!annotations && o !== this.overlay && !o.userData.cap))) { hidden.push(o); o.visible = false; }
+    });
     if (transparent) this.setBackground(null);
     this.renderer.setSize(w * scale, h * scale, false);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
-    const url = this.renderer.domElement.toDataURL('image/png');
+    const out = document.createElement('canvas');
+    out.width = w * scale; out.height = h * scale;
+    const g = out.getContext('2d')!;
+    g.drawImage(this.renderer.domElement, 0, 0);
+    if (annotations) {
+      // HTML labels are not part of the WebGL image, so draw them as text.
+      this.overlay.traverse((o: any) => {
+        if (!o.isCSS2DObject || !isVisible(o)) return;
+        const p = o.getWorldPosition(new THREE.Vector3()).project(this.camera);
+        if (p.z > 1) return;
+        const x = ((p.x + 1) / 2) * w * scale, y = ((1 - p.y) / 2) * h * scale;
+        const text = (o.element.textContent || '').trim();
+        g.font = `500 ${12 * scale}px "Geist Mono", ui-monospace, monospace`;
+        const tw = g.measureText(text).width, pad = 6 * scale, bh = 20 * scale;
+        g.fillStyle = '#f4f4f1';
+        g.beginPath(); g.roundRect(x - tw / 2 - pad, y - bh / 2, tw + pad * 2, bh, 5 * scale); g.fill();
+        g.fillStyle = '#0a0a0a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(text, x, y + scale);
+      });
+    }
+    const url = out.toDataURL('image/png');
     this.renderer.setSize(w, h);
-    this.overlay.visible = overlayVisible;
+    hidden.forEach((o) => (o.visible = true));
     this.setBackground(prevBg || '#151515');
     return url;
   }

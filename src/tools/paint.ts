@@ -54,6 +54,7 @@ export class PaintTool {
     this.cursor.userData.helper = true;
     this.cursor.visible = false;
     this.cursor.raycast = () => {};
+    this.cursor.userData.noShot = true;
     viewer.overlay.add(this.cursor);
   }
 
