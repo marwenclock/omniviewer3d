@@ -24,8 +24,10 @@ function orbitSetup() {
 function hideChrome() {
   const v = ctx.viewer;
   const hidden: THREE.Object3D[] = [];
-  v.overlay.traverse((o) => { if (o.visible && (o === v.grid || o.userData.noShot)) { hidden.push(o); o.visible = false; } });
-  return () => hidden.forEach((o) => (o.visible = true));
+  // Grid, axes, gizmos and the corner XYZ helper stay out of the recording.
+  v.overlay.traverse((o) => { if (o.visible && (o === v.grid || o === v.axes || o.userData.noShot)) { hidden.push(o); o.visible = false; } });
+  v.recording = true;
+  return () => { hidden.forEach((o) => (o.visible = true)); v.recording = false; };
 }
 
 function pickMime() {
@@ -114,7 +116,7 @@ registerPanel({
       busy = true;
       try { await (format === 'gif' ? recordGif() : recordVideo()); }
       catch (e: any) { ctx.toast(e?.message || String(e), true); }
-      finally { busy = false; ctx.setLoading(null); ctx.renderDetails(); }
+      finally { busy = false; ctx.viewer.recording = false; ctx.viewer.controls.enabled = true; ctx.setLoading(null); ctx.renderDetails(); }
     });
   },
 });

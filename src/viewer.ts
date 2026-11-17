@@ -46,6 +46,8 @@ export class Viewer {
   private listeners = new Set<() => void>();
   private frameHooks = new Set<(dt: number) => void>();
   background = '#151515';
+  /** true while recording a video / GIF: the corner axis gizmo is not drawn */
+  recording = false;
   /** temporary visual overrides (inspector modes) that must be undone while exporting */
   readonly cleanHooks = new Set<{ off(): void; on(): void }>();
 
@@ -140,7 +142,7 @@ export class Viewer {
     this.frameHooks.forEach((f) => f(dt));
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
-    this.viewHelper.render(this.renderer);
+    if (!this.recording) this.viewHelper.render(this.renderer);
     this.labels.render(this.scene, this.camera);
   }
 
