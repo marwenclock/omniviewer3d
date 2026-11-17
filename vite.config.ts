@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import { readFileSync } from 'node:fs';
 // @ts-ignore: plain JS module shared with the build script
-import { PAGES, renderPage } from './scripts/seo.mjs';
+import { PAGES, renderPage, pagePath } from './scripts/seo.mjs';
 
 /** Renders the home page content into index.html, and serves the landing pages in dev. */
 function seoPages(): Plugin {
@@ -13,13 +13,13 @@ function seoPages(): Plugin {
     },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const slug = (req.url || '').split(/[?#]/)[0].replace(/^\/|\/$/g, '');
-        const page = PAGES.find((p: any) => p.slug && p.slug === slug);
+        const path = (req.url || '').split(/[?#]/)[0].replace(/^\//, '');
+        const page = PAGES.find((p: any) => pagePath(p) && pagePath(p) === (path.endsWith('/') ? path : path + '/'));
         if (!page) return next();
         let html = readFileSync('index.html', 'utf8');
-        html = await server.transformIndexHtml(`/${slug}/`, html);
+        html = await server.transformIndexHtml('/' + pagePath(page), html);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.end(renderPage(html, page, { base: '../' }));
+        res.end(renderPage(html, page));
       });
     },
   };

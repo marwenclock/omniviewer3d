@@ -562,3 +562,9 @@ body:not(.has-model) .side { display: none !important; }
 .cmp-table td:first-child { text-align: left; font-family: var(--font); color: var(--muted); }
 .cmp-table td.up { color: #ffb347; }
 .cmp-table td.down { color: #6ab7ff; }
+
+/* ------------------------------------------------------------ batch 10 */
+.share-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; align-items: center; }
+.share-row.compact { width: 100%; margin: 0 0 6px; }
+.share-row .chip { text-decoration: none; }
+.lang-links a[aria-current="page"] { border-color: var(--ink); color: var(--hi); }

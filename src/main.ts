@@ -194,6 +194,8 @@ function applyPageIntent() {
   if (PAGE.to) { const to = PAGE.to; setTimeout(() => (store.get(autoKey(to), '') ? runExport(to) : showExportDialog(to)), 350); return; }
   if (tool === 'convert') { setTimeout(() => showExportDialog(), 350); return; }
   if (tool === 'paint' || tool === 'measure') { setTool(tool); return; }
+  if (tool === 'cost') { scrollToSection('sec-cost'); return; }
+  if (tool && panels.has(tool)) { setTool(tool); return; }
   if (tool === 'edit') { editor.setGizmo('translate'); toast('Click a part, then drag the arrows to move it'); return; }
   if (tool === 'scale' || tool === 'units' || tool === 'volume') {
     document.body.classList.remove('no-right');
@@ -227,6 +229,7 @@ function newScene() {
   document.body.classList.add('has-model');
   editor.addPrimitive('box');
   if (PAGE.tool === 'edit') editor.setGizmo('translate');
+  if (PAGE.tool && panels.get(PAGE.tool)?.needsModel === false) setTool(PAGE.tool);
   viewer.fit(viewer.model, 'iso');
   refreshStats();
   renderAll();
@@ -1157,6 +1160,8 @@ function showShareDialog() {
     openModal(`<h2>Share a model</h2>
       <p>This model was opened from your device, and ${CONFIG.appName} never uploads your files, so there is no link to share yet.</p>
       <p>To share: put the file somewhere public (for example GitHub, Dropbox or any web host that allows cross-origin downloads), then use <b>Open from URL</b>. The page address becomes a shareable link and you get an embed code.</p>
+      <div class="field-label" style="margin:12px 0 6px">Or share ${CONFIG.appName} itself</div>
+      ${shareButtons(location.origin + location.pathname, `${CONFIG.appName}: free online 3D viewer, converter and editor`)}
       <div class="modal-actions"><button class="btn-outline" data-modal-close>Close</button><button class="btn-solid" id="shareUrl">${icon('link')} Open from URL</button></div>`);
     $('#shareUrl').onclick = () => showUrlDialog();
     return;
@@ -1167,6 +1172,8 @@ function showShareDialog() {
   openModal(`<h2>Share & embed</h2>
     <div class="field-label" style="margin:10px 0 6px">Link</div><textarea rows="2" readonly id="shareLink">${esc(link)}</textarea>
     <div class="field-label" style="margin:12px 0 6px">Embed code</div><textarea rows="3" readonly id="shareEmbed">${esc(embed)}</textarea>
+    <div class="field-label" style="margin:12px 0 6px">Badge for your listing (Etsy, Printables, YouTube…)</div><textarea rows="2" readonly id="shareBadge">${esc(`<a href="${link}">View in 3D on ${CONFIG.appName}</a>`)}</textarea>
+    ${shareButtons(link, `${state.modelName} in 3D`)}
     <div class="modal-actions"><button class="btn-outline" id="copyEmbed">${icon('copy')} Copy embed</button><button class="btn-solid" id="copyLink">${icon('copy')} Copy link</button></div>`);
   const copy = (txt: string) => navigator.clipboard?.writeText(txt).then(() => toast('Copied'), () => toast('Copy failed: select the text and copy it', true));
   $('#copyLink').onclick = () => copy(link);
@@ -1179,6 +1186,7 @@ function showSupportDialog() {
     <p>${CONFIG.appName} by ${CONFIG.brandName} ${CONFIG.brandSup} is completely free and open source. There are no ads, no accounts, no tracking and no uploads: your models stay on your device.</p>
     <p>Running and improving it still takes time and hosting. If it helps you, a small donation keeps it going.</p>
     <div class="modal-actions">
+      ${shareButtons('https://omniviewer3d.com/', `${CONFIG.appName}: free online 3D viewer, converter and editor`, true)}
       <a class="btn-outline" href="${CONFIG.repoUrl}" target="_blank" rel="noopener">${icon('github')} Star on GitHub</a>
       ${has ? `<a class="btn-solid" href="${CONFIG.donateUrl}" target="_blank" rel="noopener">${icon('heart')} ${esc(CONFIG.donateLabel)}</a>`
         : `<button class="btn-solid" disabled title="Donations are being set up">${icon('heart')} Donations coming soon</button>`}
@@ -1237,6 +1245,7 @@ registerMainContextActions();
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 renderAll();
 renderRecent();
+if (PAGE.tool === 'batch') setTimeout(showBatchDialog, 300);
 
 // Offline support: cache the app after the first visit (production builds only).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -1467,3 +1476,16 @@ $('#mobileBar').addEventListener('click', (e) => {
   else if (m === 'measure' || m === 'paint') setTool(m);
   else runAction(m);
 });
+
+/** Share links for social sites (open in a new tab; nothing is sent until the user posts). */
+function shareButtons(link: string, text: string, compact = false) {
+  const u = encodeURIComponent(link), t = encodeURIComponent(text);
+  const sites = [
+    ['X', `https://twitter.com/intent/tweet?url=${u}&text=${t}`],
+    ['Reddit', `https://www.reddit.com/submit?url=${u}&title=${t}`],
+    ['Facebook', `https://www.facebook.com/sharer/sharer.php?u=${u}`],
+    ['LinkedIn', `https://www.linkedin.com/sharing/share-offsite/?url=${u}`],
+    ['Email', `mailto:?subject=${t}&body=${u}`],
+  ];
+  return `<div class="share-row ${compact ? 'compact' : ''}">${compact ? '<span class="note" style="margin:0">Tell a friend:</span>' : ''}${sites.map(([n, href]) => `<a class="chip" href="${href}" target="_blank" rel="noopener">${n}</a>`).join('')}</div>`;
+}
