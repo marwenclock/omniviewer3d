@@ -130,6 +130,7 @@
         <button class="btn-outline" data-action="support"><i data-icon="heart"></i>Support</button>
         <a class="tb" id="repoLink" href="#" target="_blank" rel="noopener" data-tip="Source code on GitHub"><i data-icon="github"></i></a>
         <button class="tb" data-action="theme" data-tip="Light / dark"><i data-icon="sun"></i></button>
+        <button class="tb" data-action="palette" data-tip="Search all tools (Ctrl+K)"><i data-icon="search"></i></button>
         <button class="tb" data-action="help" data-tip="Help & shortcuts (?)"><i data-icon="help"></i></button>
       </div>
     </header>
@@ -209,6 +210,14 @@
       </aside>
     </main>
 
+    <nav class="mobilebar" id="mobileBar" aria-label="Tools">
+      <button data-m="open"><i data-icon="open"></i><span>Open</span></button>
+      <button data-m="fit" class="needs-model"><i data-icon="fit"></i><span>Fit</span></button>
+      <button data-m="measure" class="needs-model"><i data-icon="ruler"></i><span>Measure</span></button>
+      <button data-m="palette"><i data-icon="tools"></i><span>Tools</span></button>
+      <button data-m="export" class="needs-model"><i data-icon="download"></i><span>Export</span></button>
+      <button data-m="details" class="needs-model"><i data-icon="info"></i><span>Details</span></button>
+    </nav>
     <footer class="statusbar" id="statusbar">
       <span id="statusLeft">Ready</span>
       <span class="grow"></span>

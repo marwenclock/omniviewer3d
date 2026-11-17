@@ -18,6 +18,7 @@ import { guessUnit, defaultUp, rememberPref } from './units';
 import { initFeatures } from './features';
 import { capsEnabled, setCaps } from './features/caps';
 import { showBatchDialog } from './features/batch';
+import { openPalette, registerContextAction } from './features/palette';
 import { CAD_QUALITY, cadQuality } from './cad';
 
 // ------------------------------------------------------------------ helpers
@@ -144,6 +145,7 @@ async function openFiles(files: File[], urls: string[] | null = null) {
     if (res.warnings.length) toast('Some files could not be loaded:\n' + res.warnings.join('\n'), true);
     else toast(`Opened ${state.modelName}`);
     applyPageIntent();
+    maybeShowTips();
   } catch (err: any) {
     if (err?.name === 'AbortError') { toast('Cancelled'); return; }
     console.error(err);
@@ -182,7 +184,7 @@ function history_replaceHash(urls: string[]) {
 /** After a file opens, jump straight to what this landing page is about. */
 function applyPageIntent() {
   const tool = PAGE.tool;
-  if (PAGE.to) { setTimeout(() => showExportDialog(PAGE.to), 350); return; }
+  if (PAGE.to) { const to = PAGE.to; setTimeout(() => (store.get(autoKey(to), '') ? runExport(to) : showExportDialog(to)), 350); return; }
   if (tool === 'convert') { setTimeout(() => showExportDialog(), 350); return; }
   if (tool === 'paint' || tool === 'measure') { setTool(tool); return; }
   if (tool === 'edit') { editor.setGizmo('translate'); toast('Click a part, then drag the arrows to move it'); return; }
@@ -357,6 +359,7 @@ function runAction(a: string) {
     case 'support': showSupportDialog(); break;
     case 'help': showHelpDialog(); break;
     case 'batch': showBatchDialog(); break;
+    case 'palette': openPalette(); break;
     case 'theme': applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); renderSettings(); break;
   }
 }
@@ -1069,34 +1072,41 @@ function baseFileName() {
   return n || 'model';
 }
 
-function showExportDialog(preferred?: ExportId) {
+async function runExport(id: ExportId, part: THREE.Object3D | null = null, zUp = viewer.upAxis === 'y' && ['stl', 'stl-ascii', '3mf', 'obj'].includes(id)) {
+  const f = EXPORT_FORMATS.find((x) => x.id === id)!;
+  setLoading(`Exporting ${f.label}…`);
+  try {
+    const blob = await exportModel(viewer, id, part ?? undefined, { unit: state.unit, zUp });
+    download(blob, `${baseFileName()}${part ? '-' + (part.name || 'part').replace(/[^\w\-]+/g, '') : ''}.${f.ext}`);
+    toast(`Exported ${f.label}`);
+  } catch (err: any) {
+    console.error(err);
+    toast(`Export failed: ${err?.message || err}`, true);
+  } finally { setLoading(null); }
+}
+
+const autoKey = (id: string) => 'auto.' + id;
+function showExportDialog(preferred?: ExportId, partOverride?: THREE.Object3D) {
   if (!viewer.model) return;
   const formats = preferred
     ? [...EXPORT_FORMATS].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
     : [...EXPORT_FORMATS];
-  const sel = editor.selected && editor.selected !== viewer.model ? editor.selected : null;
+  const sel = partOverride ?? (editor.selected && editor.selected !== viewer.model ? editor.selected : null);
   openModal(`<h2>Export as another format</h2>
     <p>Converts the current scene, including your edits and paint, and downloads it.</p>
-    ${sel ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportSel"/> Only the selected part (${esc(sel.name || 'object')})</label>` : ''}
+    ${sel ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportSel" ${partOverride ? 'checked' : ''}/> Only the selected part (${esc(sel.name || 'object')})</label>` : ''}
     ${viewer.upAxis === 'y' ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportZup" checked/> Stand upright for 3D printing (Z-up) in STL, 3MF and OBJ</label>` : ''}
+    ${preferred ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportAuto" ${store.get(autoKey(preferred), '') ? 'checked' : ''}/> On this page, download automatically next time (skip this window)</label>` : ''}
     <div class="export-grid">${formats.map((f) => `<button class="export-opt ${f.id === preferred ? 'preferred' : ''}" data-export="${f.id}"><div><b>${f.label}</b><small>${f.id === preferred ? 'Click to download · ' : ''}${f.note}</small></div><span class="ext">.${f.ext}</span></button>`).join('')}</div>`);
   $('#modalCard').onclick = async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-export]');
     if (!b) return;
     const id = b.dataset.export as ExportId;
-    const f = EXPORT_FORMATS.find((x) => x.id === id)!;
     const onlySel = sel && ($('#exportSel') as HTMLInputElement | null)?.checked;
     const zUp = !!($('#exportZup') as HTMLInputElement | null)?.checked && ['stl', 'stl-ascii', '3mf', 'obj'].includes(id);
+    if (preferred) store.set(autoKey(preferred), ($('#exportAuto') as HTMLInputElement | null)?.checked ? '1' : '');
     modal.close();
-    setLoading(`Exporting ${f.label}…`);
-    try {
-      const blob = await exportModel(viewer, id, onlySel ? sel! : undefined, { unit: state.unit, zUp });
-      download(blob, `${baseFileName()}${onlySel ? '-' + (sel!.name || 'part').replace(/[^\w\-]+/g, '') : ''}.${f.ext}`);
-      toast(`Exported ${f.label}`);
-    } catch (err: any) {
-      console.error(err);
-      toast(`Export failed: ${err?.message || err}`, true);
-    } finally { setLoading(null); }
+    await runExport(id, onlySel ? sel : null, zUp);
   };
 }
 
@@ -1198,6 +1208,7 @@ Object.assign(ctx, {
 });
 initFeatures();
 registerCoreCommands();
+registerMainContextActions();
 
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 renderAll();
@@ -1323,6 +1334,7 @@ function registerCoreCommands() {
     { id: 'url', label: 'Open from URL…', group: 'File', keywords: 'link web', run: () => runAction('url') },
     { id: 'new', label: 'New empty scene', group: 'File', keywords: 'blank start', run: () => runAction('new') },
     { id: 'export', label: 'Export / convert…', group: 'File', keywords: 'save download convert stl obj glb ply usdz 3mf', run: () => runAction('export'), enabled: has },
+    ...EXPORT_FORMATS.map((f) => ({ id: 'export-' + f.id, label: `Export as ${f.label}`, group: 'Convert', keywords: `convert save download ${f.ext} ${f.id}`, run: () => runExport(f.id), enabled: has })),
     { id: 'screenshot', label: 'Save screenshot…', group: 'File', keywords: 'image png picture', run: () => runAction('screenshot'), enabled: has },
     { id: 'share', label: 'Share / embed…', group: 'File', keywords: 'link iframe', run: () => runAction('share'), enabled: has },
     { id: 'install', label: 'Install app (works offline)', group: 'File', keywords: 'pwa offline desktop', run: installApp },
@@ -1370,3 +1382,64 @@ function scrollToSection(id: string) {
 function applyIntent(tool: string) { const prev = PAGE.tool; PAGE.tool = tool; const to = PAGE.to; PAGE.to = undefined; applyPageIntent(); PAGE.tool = prev; PAGE.to = to; }
 
 $('#loadingCancel').addEventListener('click', () => { state.abort?.abort(); setLoading(null); $('#loadingCancel').classList.add('hidden'); });
+
+// ------------------------------------------------------------------ right-click actions
+function registerMainContextActions() {
+  const part = (h: THREE.Intersection | null) => !!h;
+  const anyHidden = () => !!viewer.model && viewer.model.getObjectsByProperty('visible', false).some((o) => !o.userData.helper);
+  registerContextAction(
+    { label: 'Zoom to part', icon: 'target', when: part, run: (h) => viewer.fit(h!.object) },
+    { label: 'Hide', icon: 'eyeoff', when: part, run: (h) => { editor.toggleVisibility(h!.object); renderTree(); } },
+    { label: 'Isolate', icon: 'isolate', when: part, run: (h) => isolate(h!.object) },
+    { label: 'Show everything', icon: 'eye', when: anyHidden, run: () => { viewer.model!.traverse((o) => { if (!o.userData.helper) o.visible = true; }); renderTree(); refreshStats(50); } },
+    { label: 'Recolour part', icon: 'brush', when: part, run: () => { paint.mode = 'object'; if (state.tool !== 'paint') setTool('paint'); else renderDetails(); toast('Pick a colour, then click the part'); } },
+    { label: 'Duplicate', icon: 'copy', when: (h) => !!h && h.object !== viewer.model, run: () => editor.duplicateSelected() },
+    { label: 'Export this part…', icon: 'download', when: part, run: (h) => showExportDialog(undefined, h!.object) },
+    { label: 'Fit to window', icon: 'fit', when: (h) => !h && !!viewer.model, run: () => viewer.fit() },
+    { label: 'Add a box here', icon: 'shapes', when: (h) => !h, run: () => { editor.addPrimitive('box'); document.body.classList.add('has-model'); } },
+    { label: 'Save screenshot…', icon: 'camera', when: (h) => !h && !!viewer.model, run: () => showScreenshotDialog() },
+    { label: 'All commands…', icon: 'search', when: () => true, run: () => openPalette() },
+    { label: 'Delete', icon: 'trash', danger: true, when: (h) => !!h && h.object !== viewer.model, run: () => editor.deleteSelected() },
+  );
+}
+
+// ------------------------------------------------------------------ paste a file or link to open it
+window.addEventListener('paste', (e) => {
+  if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return;
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); openFiles(files); return; }
+  const text = e.clipboardData?.getData('text')?.trim() || '';
+  const urls = text.split(/\s+/).filter((u) => /^https?:\/\/\S+$/i.test(u));
+  if (urls.length) { e.preventDefault(); openUrls(urls); }
+});
+
+// ------------------------------------------------------------------ first-visit tips
+function maybeShowTips() {
+  if (store.get('tips', '') || document.body.classList.contains('embed') || $('.tips')) return;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const el = document.createElement('div');
+  el.className = 'tips';
+  el.innerHTML = `<div class="tips-head"><b>Quick tips</b><button class="node-btn" style="opacity:1" aria-label="Close tips">${icon('x')}</button></div>
+    <ol>
+      <li>${touch ? 'Drag with one finger to orbit, two fingers to pan and pinch to zoom.' : 'Drag to orbit, right-drag to pan, scroll to zoom. Double-click a part to zoom to it.'}</li>
+      <li>Click a part to select it. ${touch ? 'Long-press' : 'Right-click'} for actions like hide, isolate and export.</li>
+      <li>Press <kbd>Ctrl K</kbd> to search every tool: repair, reduce, cut, convert…</li>
+    </ol>
+    <button class="btn-outline small" data-tipsok>Got it</button>`;
+  $('#stage').appendChild(el);
+  const close = () => { store.set('tips', '1'); el.remove(); };
+  el.querySelector('[data-tipsok]')!.addEventListener('click', close);
+  el.querySelector('.node-btn')!.addEventListener('click', close);
+}
+
+// ------------------------------------------------------------------ phone toolbar
+$('#mobileBar').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-m]');
+  if (!b) return;
+  const m = b.dataset.m!;
+  if (m === 'details') document.body.classList.toggle('no-right');
+  else if (m === 'scene') document.body.classList.toggle('no-left');
+  else if (m === 'palette') openPalette();
+  else if (m === 'measure' || m === 'paint') setTool(m);
+  else runAction(m);
+});
