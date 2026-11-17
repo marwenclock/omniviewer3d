@@ -40,9 +40,9 @@ export class Viewer {
   private sectionHelper: THREE.Mesh | null = null;
   private explodeFactor = 0;
   private timer = new THREE.Timer();
-  private envTexture: THREE.Texture;
-  private headlight: THREE.DirectionalLight;
-  private ambient: THREE.HemisphereLight;
+  envTexture: THREE.Texture;
+  headlight: THREE.DirectionalLight;
+  ambient: THREE.HemisphereLight;
   private listeners = new Set<() => void>();
   private frameHooks = new Set<(dt: number) => void>();
   background = '#151515';

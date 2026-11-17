@@ -5,6 +5,9 @@ import { initCaps } from './caps';
 import { initBatch } from './batch';
 import { initPaletteAndMenu } from './palette';
 import { initViews } from './views';
+import { initLook } from './look';
+import { initTurntable } from './turntable';
+import { initCompare } from './compare';
 
 export function initFeatures() {
   initPrintTools();
@@ -13,4 +16,7 @@ export function initFeatures() {
   initBatch();
   initPaletteAndMenu();
   initViews();
+  initLook();
+  initTurntable();
+  initCompare();
 }

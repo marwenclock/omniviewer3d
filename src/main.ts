@@ -20,6 +20,7 @@ import { capsEnabled, setCaps } from './features/caps';
 import { showBatchDialog } from './features/batch';
 import { openPalette, registerContextAction } from './features/palette';
 import { cameraString, applyCamera } from './features/views';
+import { LOOKS, currentLook, setLook, BACKDROPS, setBackdrop, setShadow, shadowEnabled, envBackground, setEnvBackground } from './features/look';
 import { CAD_QUALITY, cadQuality } from './cad';
 
 // ------------------------------------------------------------------ helpers
@@ -998,7 +999,10 @@ function renderSettings() {
     </div>
     <div class="section">
       <div class="section-head"><span class="section-title">Environment</span></div>
-      <div class="row"><label>Lighting</label><select data-light><option value="studio">Studio</option><option value="soft">Soft</option><option value="flat">Flat (no reflections)</option></select></div>
+      <div class="row"><label>Lighting</label><select data-light>${Object.entries(LOOKS).map(([k, l]) => `<option value="${k}" ${k === currentLook ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="row"><label>Backdrop</label><select data-backdrop><option value="">Choose…</option>${Object.keys(BACKDROPS).map((k) => `<option>${k}</option>`).join('')}</select></div>
+      <label class="check"><input type="checkbox" data-shadow ${shadowEnabled() ? 'checked' : ''}/> Ground shadow</label>
+      <label class="check"><input type="checkbox" data-envbg ${envBackground ? 'checked' : ''}/> Show lighting environment as background</label>
       <div class="row"><label>Background</label><input type="color" value="${bg}" data-bg /><span class="grow"></span><button class="chip" data-bgreset>Default</button></div>
       <div class="palette">${['#151515', '#0a0a0a', '#2b2b2b', '#5a5a5a', '#ebebea', '#ffffff', '#1d2a3a', '#2a1d1d'].map((c) => `<button style="background:${c}" data-bgswatch="${c}" aria-label="${c}"></button>`).join('')}</div>
     </div>
@@ -1014,7 +1018,6 @@ function renderSettings() {
       <div class="row"><label>App</label><button class="chip" data-install>${icon('download')}Install ${CONFIG.appName}</button></div>
       <p class="note">Install it to use ${CONFIG.appName} like a desktop app, also offline. Your files are processed locally in this browser. Nothing is uploaded.</p>
     </div>${supportBox()}`;
-  ($('[data-light]', host) as HTMLSelectElement).value = store.get('light', 'studio');
 }
 
 const settings = $('#rtab-settings');
@@ -1041,7 +1044,10 @@ settings.addEventListener('change', (e) => {
   const d = t.dataset;
   if (d.dmode) viewer.setDisplayMode(t.value as DisplayMode);
   if (d.cadq !== undefined) { try { localStorage.setItem('omniview.cadQuality', t.value); } catch { /* private mode */ } toast('CAD quality saved · applies to STEP / IGES / BREP files you open next'); }
-  if (d.light) { viewer.setLighting(t.value as any); store.set('light', t.value); }
+  if (d.light) setLook(t.value);
+  if (d.backdrop) { setBackdrop(t.value); state.bgCustom = null; }
+  if (d.shadow !== undefined) setShadow(t.checked);
+  if (d.envbg !== undefined) setEnvBackground(t.checked);
   if (d.set === 'edges') viewer.setEdges(t.checked);
   if (d.set === 'grid') viewer.setGrid(t.checked);
   if (d.set === 'axes') viewer.setAxes(t.checked);
