@@ -20,10 +20,11 @@
   </head>
   <body>
     <header class="topbar" id="topbar">
-      <a class="brand" href="./" title="OMNIVIEWER home" aria-label="OMNIVIEWER by BANKASI MEDIA">
-        <span class="logo-main"><svg class="logo-eye" viewBox="0 0 34 22" aria-hidden="true"><path d="M1.6 11C5.6 4.6 10.9 1.6 17 1.6S28.4 4.6 32.4 11C28.4 17.4 23.1 20.4 17 20.4S5.6 17.4 1.6 11z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="17" cy="11" r="5.4" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="17" cy="11" r="2.1" fill="currentColor"/></svg><span class="logo-rest">MNIVIEWER</span></span>
-        <sub class="logo-by">by <span class="logo-bankasi">BANKASI</span><sup class="logo-sup">MEDIA</sup></sub>
-      </a>
+      <div class="brand">
+        <a class="brand-home" href="./" title="OMNIVIEWER home" aria-label="OMNIVIEWER home">
+        <span class="logo-main"><svg class="logo-eye" viewBox="0 0 34 22" aria-hidden="true"><path d="M1.6 11C5.6 4.6 10.9 1.6 17 1.6S28.4 4.6 32.4 11C28.4 17.4 23.1 20.4 17 20.4S5.6 17.4 1.6 11z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="17" cy="11" r="5.4" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="17" cy="11" r="2.1" fill="currentColor"/></svg><span class="logo-rest">MNIVIEWER</span></span></a>
+        <a class="logo-by" href="https://bankasimedia.com" target="_blank" rel="noopener" title="Visit bankasimedia.com"><span class="logo-byword">by</span><span class="logo-bankasi">BANKASI</span><sup class="logo-sup">MEDIA</sup></a>
+      </div>
 
       <nav class="toolbar" id="toolbar" aria-label="Tools">
         <div class="tb-group">
@@ -36,7 +37,6 @@
           <div class="dropdown">
             <button class="tb" data-menu="views" data-tip="Camera views"><i data-icon="cube"></i><i data-icon="chev" class="chev"></i></button>
             <div class="menu" id="menu-views">
-              <div class="menu-label">[view]</div>
               <button data-view="iso">Isometric <kbd>1</kbd></button>
               <button data-view="front">Front <kbd>2</kbd></button>
               <button data-view="back">Back <kbd>3</kbd></button>
@@ -45,7 +45,7 @@
               <button data-view="top">Top <kbd>6</kbd></button>
               <button data-view="bottom">Bottom <kbd>7</kbd></button>
               <div class="menu-sep"></div>
-              <div class="menu-label">[projection]</div>
+              <div class="menu-label">Projection</div>
               <button data-projection="perspective" class="checkable">Perspective</button>
               <button data-projection="orthographic" class="checkable">Orthographic</button>
             </div>
@@ -53,7 +53,6 @@
           <div class="dropdown">
             <button class="tb" data-menu="display" data-tip="Display mode"><i data-icon="layers"></i><i data-icon="chev" class="chev"></i></button>
             <div class="menu" id="menu-display">
-              <div class="menu-label">[display]</div>
               <button data-display="shaded" class="checkable">Shaded</button>
               <button data-display="flat" class="checkable">Flat shaded</button>
               <button data-display="wireframe" class="checkable">Wireframe</button>
@@ -79,7 +78,6 @@
           <div class="dropdown">
             <button class="tb" data-menu="add" data-tip="Add shape"><i data-icon="shapes"></i><i data-icon="chev" class="chev"></i></button>
             <div class="menu" id="menu-add">
-              <div class="menu-label">[add shape]</div>
               <button data-add="box">Box</button>
               <button data-add="sphere">Sphere</button>
               <button data-add="cylinder">Cylinder</button>
@@ -102,7 +100,7 @@
 
       <div class="top-right">
         <button class="pill-free" data-action="support" title="Free, no ads: support the project">
-          <span class="dot"></span>Free · No ads
+          Free · No ads
         </button>
         <button class="btn-outline" data-action="support"><i data-icon="heart"></i>Support</button>
         <a class="tb" id="repoLink" href="#" target="_blank" rel="noopener" data-tip="Source code on GitHub"><i data-icon="github"></i></a>
@@ -128,7 +126,6 @@
         <div class="welcome" id="welcome">
           <div class="welcome-inner">
             <!--hero-->
-            <div class="eyebrow">[free 3d tool suite]</div>
             <h1>Every 3D file.<br />One free <span class="glow">toolkit</span>.</h1>
             <p class="lede">View, convert, scale, measure, paint and edit 3D models right in your browser. 30+ formats, no uploads, no ads, no sign-up.</p>
             <!--/hero-->
@@ -136,7 +133,7 @@
               <button class="card card-light" data-action="open">
                 <span class="card-label">[open]</span>
                 <span class="card-title">Drop files or browse</span>
-                <span class="card-arrow"><i data-icon="arrow"></i></span>
+                <span class="card-arrow"><i data-icon="open"></i></span>
               </button>
               <button class="card" data-action="url">
                 <span class="card-label">From link</span>

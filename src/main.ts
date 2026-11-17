@@ -998,7 +998,7 @@ modal.addEventListener('click', (e) => {
 });
 
 function showUrlDialog() {
-  openModal(`<div class="eyebrow">[open from link]</div><h2>Open a model URL</h2>
+  openModal(`<h2>Open a model URL</h2>
     <p>Paste one or more direct links to model files (one per line). Add texture/.mtl/.bin links too if the model needs them.</p>
     <textarea id="urlInput" rows="4" placeholder="https://example.com/model.glb"></textarea>
     <p class="note">The site hosting the file must allow cross-origin downloads (GitHub raw links, most CDNs and cloud storage public links work).</p>
@@ -1023,7 +1023,7 @@ function showExportDialog(preferred?: ExportId) {
     ? [...EXPORT_FORMATS].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
     : [...EXPORT_FORMATS];
   const sel = editor.selected && editor.selected !== viewer.model ? editor.selected : null;
-  openModal(`<div class="eyebrow">[export]</div><h2>Export as another format</h2>
+  openModal(`<h2>Export as another format</h2>
     <p>Converts the current scene, including your edits and paint, and downloads it.</p>
     ${sel ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportSel"/> Only the selected part (${esc(sel.name || 'object')})</label>` : ''}
     <div class="export-grid">${formats.map((f) => `<button class="export-opt ${f.id === preferred ? 'preferred' : ''}" data-export="${f.id}"><div><b>${f.label}</b><small>${f.id === preferred ? 'Click to download · ' : ''}${f.note}</small></div><span class="ext">.${f.ext}</span></button>`).join('')}</div>`);
@@ -1047,7 +1047,7 @@ function showExportDialog(preferred?: ExportId) {
 }
 
 function showScreenshotDialog() {
-  openModal(`<div class="eyebrow">[screenshot]</div><h2>Save an image</h2>
+  openModal(`<h2>Save an image</h2>
     <div class="row"><label>Size</label><div class="seg" id="shotScale"><button data-s="1" class="active">1×</button><button data-s="2">2×</button><button data-s="4">4×</button></div></div>
     <label class="check"><input type="checkbox" id="shotTransparent"/> Transparent background</label>
     <div class="modal-actions"><button class="btn-outline" data-modal-close>Cancel</button><button class="btn-solid" id="shotGo">${icon('camera')} Save PNG</button></div>`);
@@ -1067,7 +1067,7 @@ function showScreenshotDialog() {
 
 function showShareDialog() {
   if (!state.sourceUrls) {
-    openModal(`<div class="eyebrow">[share]</div><h2>Share a model</h2>
+    openModal(`<h2>Share a model</h2>
       <p>This model was opened from your device, and ${CONFIG.appName} never uploads your files, so there is no link to share yet.</p>
       <p>To share: put the file somewhere public (for example GitHub, Dropbox or any web host that allows cross-origin downloads), then use <b>Open from URL</b>. The page address becomes a shareable link and you get an embed code.</p>
       <div class="modal-actions"><button class="btn-outline" data-modal-close>Close</button><button class="btn-solid" id="shareUrl">${icon('link')} Open from URL</button></div>`);
@@ -1077,7 +1077,7 @@ function showShareDialog() {
   const base = location.origin + location.pathname;
   const link = `${base}#model=${state.sourceUrls.map(encodeURIComponent).join(',')}`;
   const embed = `<iframe src="${link}&embed=1" width="640" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
-  openModal(`<div class="eyebrow">[share]</div><h2>Share & embed</h2>
+  openModal(`<h2>Share & embed</h2>
     <div class="field-label" style="margin:10px 0 6px">Link</div><textarea rows="2" readonly id="shareLink">${esc(link)}</textarea>
     <div class="field-label" style="margin:12px 0 6px">Embed code</div><textarea rows="3" readonly id="shareEmbed">${esc(embed)}</textarea>
     <div class="modal-actions"><button class="btn-outline" id="copyEmbed">${icon('copy')} Copy embed</button><button class="btn-solid" id="copyLink">${icon('copy')} Copy link</button></div>`);
@@ -1088,7 +1088,7 @@ function showShareDialog() {
 
 function showSupportDialog() {
   const has = !!CONFIG.donateUrl;
-  openModal(`<div class="eyebrow">[support]</div><h2>Free forever. No ads.</h2>
+  openModal(`<h2>Free forever. No ads.</h2>
     <p>${CONFIG.appName} by ${CONFIG.brandName} ${CONFIG.brandSup} is completely free and open source. There are no ads, no accounts, no tracking and no uploads: your models stay on your device.</p>
     <p>Running and improving it still takes time and hosting. If it helps you, a small donation keeps it going.</p>
     <div class="modal-actions">
@@ -1104,7 +1104,7 @@ function showHelpDialog() {
     ['Move / Rotate / Scale', 'W / E / R'], ['Hide selected', 'H'], ['Delete selected', 'Del'], ['Duplicate', 'Ctrl+D'],
     ['Undo / Redo', 'Ctrl+Z / Ctrl+Y'], ['Cancel tool / deselect', 'Esc'], ['Zoom to part', 'Double-click'],
   ];
-  openModal(`<div class="eyebrow">[help]</div><h2>How to use ${CONFIG.appName}</h2>
+  openModal(`<h2>How to use ${CONFIG.appName}</h2>
     <p>Drop files (or a whole folder or .zip) anywhere on the page. For models with textures, drop the textures, .mtl or .bin files together with the model. Orbit with the left mouse button, pan with the right, zoom with the wheel.</p>
     <div class="shortcuts">${sc.map(([a, k]) => `<span>${a}</span><kbd>${k}</kbd>`).join('')}</div>
     <p class="note" style="margin-top:14px">Supported: ${FORMATS.map((f) => f.name).join(', ')}.</p>

@@ -28,7 +28,6 @@ export function buildPages() {
     slug: '', kind: 'home',
     title: `${APP} · Free Online 3D Viewer, Converter & Editor`,
     desc: 'Free all-in-one 3D toolkit in your browser. View, convert, scale, measure, paint and edit STL, STEP, OBJ, FBX, GLB, 3MF, IFC, 3DM and 30+ formats. No uploads, no ads, no sign-up.',
-    eyebrow: '[free 3d tool suite]',
     h1: 'Every 3D file.<br />One free <span class="glow">toolkit</span>.',
     lede: 'View, convert, scale, measure, paint and edit 3D models right in your browser. 30+ formats, no uploads, no ads, no sign-up.',
     config: {},
@@ -45,7 +44,6 @@ export function buildPages() {
       slug: `${key}-viewer`, kind: 'viewer', key,
       title: `${f.name} Viewer Online · Free, No Upload · Open ${exts} Files`,
       desc: `Free online ${f.name} viewer. Open ${exts} files in your browser, measure, section, scale, paint and convert them to STL, OBJ or GLB. No upload, no install, no ads.`,
-      eyebrow: `[${f.name.toLowerCase()} viewer]`,
       h1: `Free online <span class="glow">${esc(f.name)} viewer</span>.`,
       lede: `Open ${exts} files instantly in your browser. Measure, section, scale and convert them. Your file never leaves your device.`,
       config: { kind: 'viewer', from: key },
@@ -69,7 +67,6 @@ export function buildPages() {
       slug: `${from}-to-${to}`, kind: 'convert', key: from,
       title: `Convert ${f.name} to ${t.name} Online · Free ${f.name} to ${t.name} Converter`,
       desc: `Convert ${f.name} (${extList(f, from)}) to ${t.name} free in your browser. No upload, no sign-up, no ads. Preview, scale and fix the model before you download.`,
-      eyebrow: `[${f.name.toLowerCase()} → ${t.name.toLowerCase()}]`,
       h1: `Convert <span class="glow">${esc(f.name)} to ${esc(t.name)}</span>.`,
       lede: `Drop a ${f.name} file and download it as ${t.name} in seconds. Conversion happens on your device, so your file is never uploaded.`,
       config: { kind: 'convert', from, to: t.id },
@@ -94,7 +91,6 @@ export function buildPages() {
       slug: t.slug, kind: 'tool',
       title: `${t.title} · ${APP}`,
       desc: t.desc,
-      eyebrow: `[${t.label.toLowerCase()}]`,
       h1: t.h1,
       lede: t.lede,
       config: { kind: 'tool', tool: t.tool },
@@ -111,7 +107,7 @@ export const PAGES = buildPages();
 const url = (slug) => SITE_URL + (slug ? slug + '/' : '');
 
 function toolsGrid() {
-  return `<div class="tools-head">[tools]</div><div class="tools-grid">
+  return `<div class="tools-grid">
     <a class="tool-tile" href="./"><i data-icon="eye"></i><b>3D viewer</b><span>Open 30+ formats</span></a>
     ${TOOLS.map((t) => `<a class="tool-tile" href="${t.slug}/"><i data-icon="${t.icon}"></i><b>${esc(t.label)}</b><span>${esc(t.short)}</span></a>`).join('\n    ')}
   </div>`;
@@ -172,7 +168,6 @@ export function renderPage(html, page, { base = '' } = {}) {
     ${jsonLd(page)}
     <!--/head-extra-->`);
   rep(/<!--hero-->[\s\S]*?<!--\/hero-->/, `<!--hero-->
-            <div class="eyebrow">${esc(page.eyebrow)}</div>
             <h1>${page.h1}</h1>
             <p class="lede">${page.lede}</p>
             <!--/hero-->`);
