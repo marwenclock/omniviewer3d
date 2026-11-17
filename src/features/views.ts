@@ -70,10 +70,45 @@ function buildDims() {
 export function setDims(on: boolean) { dimsOn = on; buildDims(); }
 
 // ------------------------------------------------------------------ saved views
-interface SavedView { name: string; cam: string }
-const storeKey = () => 'omniview.views.' + ctx.modelName();
-function loadViews(): SavedView[] { try { return JSON.parse(localStorage.getItem(storeKey()) || '[]'); } catch { return []; } }
+/** A saved view: camera and projection, plus optional section plane and part visibility (OV-098). */
+export interface SavedView { name: string; cam: string; section?: { enabled: boolean; axis: 'x' | 'y' | 'z'; t: number; flip: boolean }; hidden?: string[]; zoom?: number }
+/** Views are keyed by model identity (name + size), so two different "part.stl" files don't share views. */
+const keyFor = (id: string) => 'omniview.views2.' + id;
+const storeKey = () => keyFor(ctx.modelId?.() || ctx.modelName());
+function loadViews(): SavedView[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(storeKey()) || 'null');
+    if (v) return v;
+    return JSON.parse(localStorage.getItem('omniview.views.' + ctx.modelName()) || '[]'); // older saves (by name)
+  } catch { return []; }
+}
 function saveViews(v: SavedView[]) { try { localStorage.setItem(storeKey(), JSON.stringify(v)); } catch { /* private mode */ } }
+export function savedViewsFor(id: string): SavedView[] { try { return JSON.parse(localStorage.getItem(keyFor(id)) || '[]'); } catch { return []; } }
+export function restoreSavedViews(id: string, v: SavedView[]) { try { localStorage.setItem(keyFor(id), JSON.stringify(v)); } catch { /* private mode */ } }
+
+function captureView(name: string, withState: boolean): SavedView {
+  const v = ctx.viewer;
+  const view: SavedView = { name, cam: cameraString(), zoom: v.camera === v.ortho ? v.ortho.zoom : undefined };
+  if (withState) {
+    view.section = { ...v.section };
+    const hidden: string[] = [];
+    v.model?.traverse((o) => { if (!o.visible && !o.userData.helper) hidden.push(o.name); });
+    view.hidden = hidden;
+  }
+  return view;
+}
+function goToView(s: SavedView) {
+  applyCamera(s.cam, !(window as any).__omniReduceMotion);
+  const v = ctx.viewer;
+  if (s.zoom && v.camera === v.ortho) { v.ortho.zoom = s.zoom; v.ortho.updateProjectionMatrix(); }
+  if (s.section) v.setSection(s.section);
+  if (s.hidden && v.model) {
+    const set = new Set(s.hidden);
+    const all: THREE.Object3D[] = [];
+    v.model.traverse((o) => { if (!o.userData.helper) all.push(o); });
+    ctx.editor.setVisibility(all, (o) => !set.has(o.name), `View: ${s.name}`);
+  }
+}
 
 const r4 = (n: number) => Number(n.toPrecision(5));
 /** Camera position + target as a compact string (used in saved views and share links). */
@@ -91,13 +126,14 @@ export function applyCamera(s: string, animate = true) {
   v.setProjection(parts[6] === 'o' ? 'orthographic' : 'perspective');
   const toPos = new THREE.Vector3(n[0], n[1], n[2]), toTgt = new THREE.Vector3(n[3], n[4], n[5]);
   const fromPos = v.camera.position.clone(), fromTgt = v.controls.target.clone();
-  if (!animate) { v.camera.position.copy(toPos); v.controls.target.copy(toTgt); v.controls.update(); return; }
+  if (!animate || (window as any).__omniReduceMotion) { v.camera.position.copy(toPos); v.controls.target.copy(toTgt); v.controls.update(); v.requestRender(); return; }
   const start = performance.now();
   const step = () => {
     const k = Math.min(1, (performance.now() - start) / 450), e = 1 - Math.pow(1 - k, 3);
     v.camera.position.lerpVectors(fromPos, toPos, e);
     v.controls.target.lerpVectors(fromTgt, toTgt, e);
     v.controls.update();
+    v.requestRender();
     if (k < 1) requestAnimationFrame(step);
   };
   step();
@@ -108,20 +144,44 @@ registerPanel({
   hint: 'Save camera angles for this model and jump back to them',
   render() {
     const list = loadViews();
-    return `<div class="row" style="margin-top:0"><input type="text" placeholder="View name" data-viewname value="View ${list.length + 1}"/><button class="chip" data-viewsave>${icon('plus')}Save</button></div>
-      <div class="views-list">${list.map((s, i) => `<div class="view-row"><button class="view-go" data-viewgo="${i}">${icon('bookmark')}${escHtml(s.name)}</button><button class="node-btn" style="opacity:1" data-viewdel="${i}" title="Delete">${icon('x')}</button></div>`).join('') || '<p class="note">No saved views yet.</p>'}</div>
-      <p class="note">Saved in this browser for “${escHtml(ctx.modelName())}”. Share links include the current view.</p>`;
+    return `<div class="row" style="margin-top:0"><input type="text" placeholder="View name" data-viewname value="View ${list.length + 1}" aria-label="View name"/><button class="chip" data-viewsave>${icon('plus')}Save</button></div>
+      <label class="check"><input type="checkbox" data-viewstate checked/> Also remember the section plane and hidden parts</label>
+      <div class="views-list">${list.map((s, i) => `<div class="view-row">
+        <button class="view-go" data-viewgo="${i}">${icon('bookmark')}${escHtml(s.name)}${s.section?.enabled ? ' <small class="muted">· section</small>' : ''}${s.hidden?.length ? ` <small class="muted">· ${s.hidden.length} hidden</small>` : ''}</button>
+        <button class="node-btn" style="opacity:1" data-viewup="${i}" aria-label="Move ${escHtml(s.name)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="node-btn" style="opacity:1" data-viewren="${i}" aria-label="Rename ${escHtml(s.name)}">${icon('text')}</button>
+        <button class="node-btn" style="opacity:1" data-viewdel="${i}" aria-label="Delete ${escHtml(s.name)}">${icon('x')}</button></div>`).join('') || '<p class="note">No saved views yet.</p>'}</div>
+      <div class="btn-row">${list.length ? `<button class="chip" data-viewexport>${icon('download')}Export views</button>` : ''}<button class="chip" data-viewimport>${icon('open')}Import views</button></div>
+      <p class="note">Saved in this browser for this model (matched by name and size). Project files and share links include the current view.</p>`;
   },
   bind(host) {
     host.querySelector('[data-viewsave]')?.addEventListener('click', () => {
       const list = loadViews();
       const name = (host.querySelector('[data-viewname]') as HTMLInputElement).value.trim() || `View ${list.length + 1}`;
-      list.push({ name, cam: cameraString() });
+      list.push(captureView(name, !!(host.querySelector('[data-viewstate]') as HTMLInputElement)?.checked));
       saveViews(list);
       ctx.renderDetails();
     });
-    host.querySelectorAll<HTMLElement>('[data-viewgo]').forEach((b) => b.addEventListener('click', () => applyCamera(loadViews()[Number(b.dataset.viewgo)].cam)));
+    host.querySelectorAll<HTMLElement>('[data-viewgo]').forEach((b) => b.addEventListener('click', () => goToView(loadViews()[Number(b.dataset.viewgo)])));
     host.querySelectorAll<HTMLElement>('[data-viewdel]').forEach((b) => b.addEventListener('click', () => { const l = loadViews(); l.splice(Number(b.dataset.viewdel), 1); saveViews(l); ctx.renderDetails(); }));
+    host.querySelectorAll<HTMLElement>('[data-viewup]').forEach((b) => b.addEventListener('click', () => { const l = loadViews(), i = Number(b.dataset.viewup); if (i > 0) { [l[i - 1], l[i]] = [l[i], l[i - 1]]; saveViews(l); ctx.renderDetails(); } }));
+    host.querySelectorAll<HTMLElement>('[data-viewren]').forEach((b) => b.addEventListener('click', () => {
+      const l = loadViews(), i = Number(b.dataset.viewren);
+      const row = b.closest('.view-row')!;
+      row.innerHTML = `<input type="text" value="${escHtml(l[i].name)}" aria-label="New name" class="view-rename"/>`;
+      const inp = row.querySelector('input')!; inp.focus(); inp.select();
+      const done = () => { l[i].name = inp.value.trim() || l[i].name; saveViews(l); ctx.renderDetails(); };
+      inp.addEventListener('change', done); inp.addEventListener('blur', done);
+    }));
+    host.querySelector('[data-viewexport]')?.addEventListener('click', () => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(loadViews(), null, 2)], { type: 'application/json' }));
+      a.download = `${ctx.baseFileName()}-views.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    });
+    host.querySelector('[data-viewimport]')?.addEventListener('click', () => {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+      inp.onchange = async () => { try { const v = JSON.parse(await inp.files![0].text()); if (Array.isArray(v)) { saveViews([...loadViews(), ...v.filter((x) => x && typeof x.cam === 'string')]); ctx.renderDetails(); } } catch { ctx.toast('That file does not contain saved views.', true); } };
+      inp.click();
+    });
   },
 });
 

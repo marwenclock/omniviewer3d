@@ -50,10 +50,26 @@ export class Viewer {
   recording = false;
   /** temporary visual overrides (inspector modes) that must be undone while exporting */
   readonly cleanHooks = new Set<{ off(): void; on(): void }>();
+  /** compare wipe: left part of the screen shows only `left` objects, right part only `right` (null = off) */
+  split: { x: number; left: THREE.Object3D[]; right: THREE.Object3D[] } | null = null;
+  /** render-on-demand (OV-087): frames are drawn while something changes, then the loop idles */
+  private renderUntil = 0;
+  /** Frames still owed after a request: a throttled rAF can outlive the time window without drawing once. */
+  private pendingFrames = 0;
+  private continuous = new Set<string>();
+  /** quality ladder (OV-089) */
+  quality: 'auto' | 'quality' | 'performance' = 'auto';
+  private slowFrames = 0;
+  private autoReduced = false;
+  /** true while a tool renders frames itself (turntable capture): the loop stays out of the way */
+  hold = false;
+  /** set when the browser drops the WebGL context (CA-23) */
+  contextLost = false;
+  onContextChange: (lost: boolean) => void = () => {};
 
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true, stencil: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.targetPixelRatio());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.localClippingEnabled = true;
@@ -90,6 +106,14 @@ export class Viewer {
     this.renderer.domElement.addEventListener('pointerup', (e) => {
       if (this.viewHelper.handleClick(e)) e.stopImmediatePropagation();
     });
+    this.controls.addEventListener('change', () => this.requestRender());
+    // Any user input or panel change keeps frames coming for a moment; idle scenes stop drawing.
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'input', 'change', 'touchstart', 'click'])
+      window.addEventListener(ev, () => this.requestRender(), { passive: true, capture: true });
+    document.addEventListener('visibilitychange', () => this.requestRender());
+    // GPU context loss (mobile GPUs under memory pressure): pause, tell the user, recover (CA-23).
+    this.renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.contextLost = true; this.onContextChange(true); });
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => { this.contextLost = false; this.refreshMaterials(); this.requestRender(2000); this.onContextChange(false); });
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -108,7 +132,35 @@ export class Viewer {
   }
 
   onChange(fn: () => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  emit() { this.listeners.forEach((f) => f()); }
+  emit() { this.requestRender(); this.listeners.forEach((f) => f()); }
+
+  /** Draws frames for the next `ms` milliseconds (render on demand). */
+  requestRender(ms = 900) { this.renderUntil = Math.max(this.renderUntil, performance.now() + ms); this.pendingFrames = Math.max(this.pendingFrames, 3); }
+  /** Keeps rendering every frame while `key` is set (recording, autoplaying animation, splats, turntable…). */
+  setContinuous(key: string, on: boolean) { if (on) this.continuous.add(key); else this.continuous.delete(key); this.requestRender(); }
+
+  private targetPixelRatio() {
+    const dpr = window.devicePixelRatio || 1;
+    if (this.quality === 'performance') return Math.min(dpr, 1);
+    if (this.quality === 'quality') return Math.min(dpr, 2);
+    return this.autoReduced ? Math.min(dpr, 1) : Math.min(dpr, 2);
+  }
+  setQuality(q: 'auto' | 'quality' | 'performance') {
+    this.quality = q; this.autoReduced = false; this.slowFrames = 0;
+    this.renderer.setPixelRatio(this.targetPixelRatio());
+    this.resize(); this.requestRender();
+  }
+
+  /** Mouse button layout (OV-115) and zoom-to-cursor (OV-040). */
+  setNavigation(preset: 'default' | 'cad' | 'blender', zoomToCursor: boolean) {
+    const { ROTATE, PAN, DOLLY } = THREE.MOUSE;
+    this.controls.mouseButtons = preset === 'default'
+      ? { LEFT: ROTATE, MIDDLE: DOLLY, RIGHT: PAN }
+      : { LEFT: null as any, MIDDLE: ROTATE, RIGHT: PAN };
+    this.controls.zoomToCursor = zoomToCursor;
+    this.navPreset = preset;
+  }
+  navPreset: 'default' | 'cad' | 'blender' = 'default';
   onFrame(fn: (dt: number) => void) { this.frameHooks.add(fn); return () => this.frameHooks.delete(fn); }
 
   private resize() {
@@ -119,6 +171,18 @@ export class Viewer {
     this.perspective.aspect = w / h;
     this.perspective.updateProjectionMatrix();
     this.updateOrtho();
+    this.requestRender?.();
+    // Resizing clears the canvas; draw straight away instead of waiting for a (possibly throttled) animation frame.
+    if (this.scene && this.camera && !this.contextLost && !this.hold && !this.recording) this.draw();
+  }
+
+  /** One frame of the scene, gizmo and labels. */
+  private draw() {
+    this.renderer.clear();
+    if (this.split && this.split.left.length + this.split.right.length) this.renderSplit();
+    else this.renderer.render(this.scene, this.camera);
+    if (!this.recording) this.viewHelper?.render(this.renderer);
+    this.labels.render(this.scene, this.camera);
   }
 
   private updateOrtho() {
@@ -136,14 +200,42 @@ export class Viewer {
   private frame() {
     this.timer.update();
     const dt = Math.min(this.timer.getDelta(), 0.1);
+    if (this.contextLost || this.hold) return;
+    const now = performance.now();
+    const animating = this.viewHelper.animating || !!(this.activeAction && !this.activeAction.paused && this.activeAction.isRunning()) || this.controls.autoRotate || this.continuous.size > 0;
+    if (!animating && now > this.renderUntil && this.pendingFrames <= 0) return; // idle: nothing changed, keep the GPU quiet
+    if (this.pendingFrames > 0) this.pendingFrames--;
     if (this.viewHelper.animating) this.viewHelper.update(dt);
-    this.controls.update(dt);
+    if (this.controls.update(dt)) this.requestRender(300); // still damping
     this.mixer?.update(dt);
     this.frameHooks.forEach((f) => f(dt));
-    this.renderer.clear();
-    this.renderer.render(this.scene, this.camera);
-    if (!this.recording) this.viewHelper.render(this.renderer);
-    this.labels.render(this.scene, this.camera);
+    this.draw();
+    // Auto quality: drop the pixel ratio while the GPU struggles (≈ under 30 fps for 2 s), restore when it recovers.
+    if (this.quality === 'auto' && dt > 0) {
+      if (dt > 0.034) this.slowFrames = Math.min(120, this.slowFrames + 1); else this.slowFrames = Math.max(-240, this.slowFrames - 1);
+      if (!this.autoReduced && this.slowFrames >= 60 && (window.devicePixelRatio || 1) > 1) { this.autoReduced = true; this.renderer.setPixelRatio(this.targetPixelRatio()); this.resize(); }
+      else if (this.autoReduced && this.slowFrames <= -240) { this.autoReduced = false; this.renderer.setPixelRatio(this.targetPixelRatio()); this.resize(); }
+    }
+  }
+
+  /** Before / after wipe: two scissored renders with complementary visibility. */
+  private renderSplit() {
+    const s = this.split!;
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const x = Math.round(size.x * Math.min(1, Math.max(0, s.x)));
+    const draw = (hide: THREE.Object3D[], left: number, width: number) => {
+      if (width <= 0) return;
+      const was = hide.map((o) => o.visible);
+      hide.forEach((o) => (o.visible = false));
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(left, 0, width, size.y);
+      this.renderer.setViewport(0, 0, size.x, size.y);
+      this.renderer.render(this.scene, this.camera);
+      hide.forEach((o, i) => (o.visible = was[i]));
+    };
+    draw(s.right, 0, x);
+    draw(s.left, x, size.x - x);
+    this.renderer.setScissorTest(false);
   }
 
   // ---------------------------------------------------------------- model
@@ -168,6 +260,7 @@ export class Viewer {
       });
       if (clips.length) {
         this.mixer = new THREE.AnimationMixer(object);
+        this.userPlayed = false;
         this.playClip(0);
       }
     }
@@ -176,13 +269,38 @@ export class Viewer {
     this.emit();
   }
 
+  /** Swaps the displayed model WITHOUT disposing the previous one (multi-document tabs, OV-110). */
+  swapModel(object: THREE.Object3D | null, clips: THREE.AnimationClip[] = [], autoplay = true) {
+    if (this.model) this.world.remove(this.model);
+    this.mixer?.stopAllAction();
+    this.mixer = null; this.activeAction = null; this.clips = clips;
+    this.model = object;
+    if (object) { this.world.add(object); if (clips.length) { this.mixer = new THREE.AnimationMixer(object); if (autoplay) this.playClip(0); } }
+    this.refreshMaterials();
+    this.emit();
+  }
+
+  /** Autoplay preference for animations (OV-060). */
+  autoplay = true;
   playClip(index: number) {
     if (!this.mixer) return;
     this.activeAction?.stop();
-    if (index < 0) { this.activeAction = null; return; }
+    if (index < 0) { this.activeAction = null; this.emit(); return; }
     this.activeAction = this.mixer.clipAction(this.clips[index]);
     this.activeAction.reset().play();
+    this.activeAction.paused = !this.autoplay && !this.userPlayed;
+    this.emit();
   }
+  /** set once the user presses Play, so autoplay-off only affects the first open */
+  userPlayed = false;
+  /** Animation transport (OV-097). */
+  setPaused(p: boolean) { if (this.activeAction) { this.activeAction.paused = p; if (!p) this.userPlayed = true; } this.requestRender(); this.emit(); }
+  get animTime() { return this.activeAction?.time ?? 0; }
+  get animDuration() { return this.activeAction?.getClip().duration ?? 0; }
+  seek(t: number) { if (!this.activeAction || !this.mixer) return; this.activeAction.time = Math.max(0, Math.min(t, this.animDuration)); this.mixer.update(0); this.requestRender(); }
+  setSpeed(k: number) { if (this.activeAction) this.activeAction.timeScale = k; }
+  setLoop(on: boolean) { if (this.activeAction) { this.activeAction.setLoop(on ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); this.activeAction.clampWhenFinished = !on; } }
+  resetPose() { this.mixer?.stopAllAction(); this.activeAction = null; this.model?.traverse((o: any) => { if (o.isSkinnedMesh) o.skeleton.pose(); }); this.requestRender(); this.emit(); }
 
   /** Re-applies display settings (clipping, wireframe, x-ray, edges) to every material. */
   refreshMaterials() {
@@ -322,7 +440,27 @@ export class Viewer {
     this.emit();
   }
 
-  setAutoRotate(on: boolean) { this.controls.autoRotate = on; this.controls.autoRotateSpeed = 1.5; }
+  setAutoRotate(on: boolean) { this.controls.autoRotate = on; this.controls.autoRotateSpeed = 1.5; this.requestRender(); }
+
+  /** Temporarily renders at an exact pixel size with the framing preserved (used by turntable capture). */
+  beginFixedSize(w: number, h: number) {
+    const prev = { ratio: this.renderer.getPixelRatio(), fov: this.perspective.fov, aspect: this.perspective.aspect, o: { l: this.ortho.left, r: this.ortho.right, t: this.ortho.top, b: this.ortho.bottom } };
+    const cw = this.container.clientWidth || 1, ch = this.container.clientHeight || 1, aspect = w / h;
+    if (aspect < cw / ch) {
+      const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(prev.fov) / 2) * (cw / ch));
+      this.perspective.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(hf / 2) / aspect));
+      const half = (prev.o.r - prev.o.l) / 2 / aspect; this.ortho.top = half; this.ortho.bottom = -half;
+    } else { const half = ((prev.o.t - prev.o.b) / 2) * aspect; this.ortho.left = -half; this.ortho.right = half; }
+    this.perspective.aspect = aspect; this.perspective.updateProjectionMatrix(); this.ortho.updateProjectionMatrix();
+    this.renderer.setPixelRatio(1); this.renderer.setSize(w, h, false);
+    return () => {
+      this.perspective.fov = prev.fov; this.perspective.aspect = prev.aspect; this.perspective.updateProjectionMatrix();
+      Object.assign(this.ortho, { left: prev.o.l, right: prev.o.r, top: prev.o.t, bottom: prev.o.b }); this.ortho.updateProjectionMatrix();
+      this.renderer.setPixelRatio(prev.ratio); this.resize();
+    };
+  }
+  /** Renders one frame now (scene only, no corner gizmo). */
+  renderOnce() { this.renderer.clear(); this.renderer.render(this.scene, this.camera); }
 
   // ---------------------------------------------------------------- environment
 
@@ -476,10 +614,14 @@ export class Viewer {
     }) ?? null;
   }
 
-  /** Screenshot as a PNG data URL, optionally at a multiple of the current size, with a transparent background. */
-  screenshot(scale = 1, transparent = false, annotations = true): string {
+  /**
+   * Screenshot as a PNG data URL (OV-005, OV-095). Renders at an explicit pixel size with pixel ratio 1, so the
+   * result matches the on-screen framing on every display (high-DPI screens used to come out cropped).
+   */
+  screenshot(scale = 1, transparent = false, annotations = true, size?: { width: number; height: number }): string {
     const prevBg = this.background;
-    const w = this.container.clientWidth, h = this.container.clientHeight;
+    const cw = this.container.clientWidth || 1, ch = this.container.clientHeight || 1;
+    const outW = Math.round(size?.width ?? cw * scale), outH = Math.round(size?.height ?? ch * scale);
     // Hide viewer chrome (grid, gizmos, selection box); keep measurements, dimensions and section caps.
     const hidden: THREE.Object3D[] = [];
     this.overlay.traverse((o) => {
@@ -487,33 +629,58 @@ export class Viewer {
       if (o.visible && (chrome || (!annotations && o !== this.overlay && !o.userData.cap))) { hidden.push(o); o.visible = false; }
     });
     if (transparent) this.setBackground(null);
-    this.renderer.setSize(w * scale, h * scale, false);
+    const prevRatio = this.renderer.getPixelRatio();
+    // Different aspect ratio: widen the camera frustum so the on-screen framing stays inside the image.
+    const aspect = outW / outH, prevAspect = this.perspective.aspect;
+    const prevOrtho = { l: this.ortho.left, r: this.ortho.right, t: this.ortho.top, b: this.ortho.bottom };
+    const prevFov = this.perspective.fov;
+    if (Math.abs(aspect - cw / ch) > 1e-3) {
+      if (aspect < cw / ch) {
+        // taller image: keep horizontal framing, extend vertically
+        const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(prevFov) / 2) * (cw / ch));
+        this.perspective.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(hf / 2) / aspect));
+        const half = (prevOrtho.r - prevOrtho.l) / 2 / aspect;
+        this.ortho.top = half; this.ortho.bottom = -half;
+      } else {
+        const half = (prevOrtho.t - prevOrtho.b) / 2 * aspect;
+        this.ortho.left = -half; this.ortho.right = half;
+      }
+      this.perspective.aspect = aspect;
+      this.perspective.updateProjectionMatrix(); this.ortho.updateProjectionMatrix();
+    }
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(outW, outH, false);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
     const out = document.createElement('canvas');
-    out.width = w * scale; out.height = h * scale;
+    out.width = outW; out.height = outH;
     const g = out.getContext('2d')!;
-    g.drawImage(this.renderer.domElement, 0, 0);
+    g.drawImage(this.renderer.domElement, 0, 0, outW, outH);
     if (annotations) {
+      const k = Math.max(1, Math.min(outW / cw, outH / ch));
       // HTML labels are not part of the WebGL image, so draw them as text.
       this.overlay.traverse((o: any) => {
         if (!o.isCSS2DObject || !isVisible(o)) return;
         const p = o.getWorldPosition(new THREE.Vector3()).project(this.camera);
         if (p.z > 1) return;
-        const x = ((p.x + 1) / 2) * w * scale, y = ((1 - p.y) / 2) * h * scale;
+        const x = ((p.x + 1) / 2) * outW, y = ((1 - p.y) / 2) * outH;
         const text = (o.element.textContent || '').trim();
-        g.font = `500 ${12 * scale}px "Geist Mono", ui-monospace, monospace`;
-        const tw = g.measureText(text).width, pad = 6 * scale, bh = 20 * scale;
+        g.font = `500 ${12 * k}px "Geist Mono", ui-monospace, monospace`;
+        const tw = g.measureText(text).width, pad = 6 * k, bh = 20 * k;
         g.fillStyle = '#f4f4f1';
-        g.beginPath(); g.roundRect(x - tw / 2 - pad, y - bh / 2, tw + pad * 2, bh, 5 * scale); g.fill();
+        g.beginPath(); g.roundRect(x - tw / 2 - pad, y - bh / 2, tw + pad * 2, bh, 5 * k); g.fill();
         g.fillStyle = '#0a0a0a'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(text, x, y + scale);
+        g.fillText(text, x, y + k);
       });
     }
     const url = out.toDataURL('image/png');
-    this.renderer.setSize(w, h);
+    this.perspective.fov = prevFov; this.perspective.aspect = prevAspect; this.perspective.updateProjectionMatrix();
+    Object.assign(this.ortho, { left: prevOrtho.l, right: prevOrtho.r, top: prevOrtho.t, bottom: prevOrtho.b }); this.ortho.updateProjectionMatrix();
+    this.renderer.setPixelRatio(prevRatio);
+    this.renderer.setSize(cw, ch);
     hidden.forEach((o) => (o.visible = true));
-    this.setBackground(prevBg || '#151515');
+    this.setBackground(transparent ? (prevBg || '#151515') : prevBg || '#151515');
+    this.requestRender();
     return url;
   }
 }

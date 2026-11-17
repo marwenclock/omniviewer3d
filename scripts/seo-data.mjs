@@ -145,37 +145,37 @@ export const FORMATS = {
     name: 'PCD', full: 'PCD (Point Cloud Data)', alt: [],
     about: 'PCD is the point cloud format of the Point Cloud Library (PCL), common for LiDAR and depth-camera scans.',
     users: 'robotics, LiDAR and scanning users',
-    tips: ['ASCII and binary PCD files open.', 'Measure distances between points.', 'Export to PLY.'],
+    tips: ['ASCII and binary PCD files open.', 'Change point size, colour and how many points are drawn.', 'Measure distances between points.'],
   },
   xyz: {
     name: 'XYZ', full: 'XYZ point cloud', alt: [],
     about: 'XYZ is a plain-text point cloud with one "x y z" coordinate per line, often exported by scanners and survey software.',
     users: 'surveyors and scanning users',
-    tips: ['Open large point clouds in the browser.', 'Measure between points.', 'Export to PLY.'],
+    tips: ['Open large point clouds in the browser.', 'Change point size and colour by height.', 'Measure between points.'],
   },
   splat: {
     name: 'Gaussian Splat', full: 'Gaussian splats (.splat, .ksplat, .spz, 3DGS .ply)', alt: ['ksplat', 'spz'],
     about: 'Gaussian splats are photo-real 3D captures made of millions of soft, coloured blobs, created from photos or video with 3D Gaussian Splatting tools such as Polycam, Luma, Postshot, Scaniverse and Nerfstudio.',
     users: '3D scanning enthusiasts, VFX artists and anyone sharing a photo-real capture',
-    tips: ['.splat, .ksplat, .spz and trained 3DGS .ply files open directly.', 'Measure real distances once you set the scale.', 'Save screenshots or a turntable video of your capture.'],
+    tips: ['.splat, .ksplat, .spz and trained 3DGS .ply files open directly.', 'Frame your capture and check its overall size.', 'Save screenshots or a turntable video of your capture.'],
   },
   gcode: {
     name: 'G-code', full: 'G-code toolpaths', alt: ['gco'],
     about: 'G-code is the set of machine instructions that a 3D printer or CNC machine follows. Viewing it shows the exact toolpath your slicer generated.',
     users: 'makers checking a sliced print before sending it to the printer',
-    tips: ['Preview the print path layer by layer with the section plane.', 'Check the overall print size.', 'Spot travel moves and gaps.'],
+    tips: ['Step through the print layer by layer with the layer slider.', 'Show or hide travel moves.', 'Check the overall print size and extrusion length.'],
   },
 };
 
 /** Export targets: id must match EXPORT_FORMATS in src/exporters.ts. */
 export const TARGETS = {
   stl: { name: 'STL', id: 'stl', note: 'STL is geometry only, so colours and textures are dropped. It is the format every slicer accepts.' },
-  obj: { name: 'OBJ', id: 'obj', note: 'OBJ keeps geometry, normals and UV coordinates and opens in almost any 3D program.' },
-  glb: { name: 'GLB', id: 'glb', note: 'GLB keeps materials, textures, colours and animations in one compact file, ideal for the web, AR and game engines.' },
+  obj: { name: 'OBJ', id: 'obj', note: 'OBJ keeps geometry, normals and UV coordinates and opens in almost any 3D program. Plain OBJ has no materials; choose “OBJ + MTL + textures” in the export window to keep colours and textures.' },
+  glb: { name: 'GLB', id: 'glb', note: 'GLB keeps materials, textures, colours and animations in one compact file, at real-world size in metres. Ideal for the web, AR and game engines.' },
   gltf: { name: 'glTF', id: 'gltf', note: 'glTF is the JSON version of GLB with all data embedded.' },
   ply: { name: 'PLY', id: 'ply', note: 'PLY keeps vertex colours, including anything you painted.' },
-  usdz: { name: 'USDZ', id: 'usdz', note: 'USDZ opens in AR Quick Look on iPhone and iPad.' },
-  '3mf': { name: '3MF', id: '3mf', note: '3MF keeps real units, colours and separate objects, and is the preferred format of modern slicers like PrusaSlicer, Bambu Studio and Cura.' },
+  usdz: { name: 'USDZ', id: 'usdz', note: 'USDZ opens in AR Quick Look on iPhone and iPad, at real-world size. Basic materials and textures are kept; animation is not.' },
+  '3mf': { name: '3MF', id: '3mf', note: '3MF keeps real units and separate objects, with one colour per object (or per triangle for painted models), and is the preferred format of modern slicers like PrusaSlicer, Bambu Studio and Cura.' },
 };
 
 /** Converter pages: [from, to]. Picked for search demand. */

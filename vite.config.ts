@@ -1,5 +1,9 @@
 import { defineConfig, type Plugin } from 'vite';
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+/** Version shown in Help / About and bug reports (OV-118): date + commit. */
+const APP_VERSION = (() => { const d = new Date().toISOString().slice(0, 10).replace(/-/g, '.'); try { return `${d}-${execSync('git rev-parse --short HEAD').toString().trim()}`; } catch { return d; } })();
 // @ts-ignore: plain JS module shared with the build script
 import { PAGES, renderPage, pagePath } from './scripts/seo.mjs';
 
@@ -28,6 +32,7 @@ function seoPages(): Plugin {
 export default defineConfig({
   // Relative base so the build works on GitHub Pages sub-paths and custom domains alike.
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [seoPages()],
   build: {
     target: 'es2022',

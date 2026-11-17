@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { unzipSync } from 'fflate';
+import { unzipSync, unzip } from 'fflate';
 
 /** Resolves a path inside public/libs relative to the page, so it works on any sub-path. */
 export const libUrl = (path: string) => new URL(`libs/${path}`, document.baseURI).href;
@@ -44,7 +44,7 @@ export const FORMATS: FormatInfo[] = [
 
 export const MODEL_EXTS = new Set(FORMATS.flatMap((f) => f.ext).filter((e) => e !== 'zip'));
 export const ACCEPT = FORMATS.flatMap((f) => f.ext).map((e) => '.' + e).join(',') +
-  ',.mtl,.bin,.png,.jpg,.jpeg,.webp,.bmp,.tga,.gif,.ktx2,.dds,.tif,.tiff';
+  ',.mtl,.bin,.png,.jpg,.jpeg,.webp,.bmp,.tga,.gif,.ktx2,.dds,.tif,.tiff,.omniproj';
 
 export const extOf = (name: string) => name.split('.').pop()!.toLowerCase();
 
@@ -64,43 +64,146 @@ const DEFAULT_COLOR = 0xb4b8bd;
 export const defaultMaterial = () =>
   new THREE.MeshStandardMaterial({ color: DEFAULT_COLOR, metalness: 0.05, roughness: 0.6, side: THREE.DoubleSide });
 
-/** Expands ZIP archives into plain File objects. */
+// ------------------------------------------------------------------ virtual file system (OV-011)
+/** Relative path of each file inside a dropped folder or ZIP ("textures/wood.png"). */
+export const filePaths = new WeakMap<File, string>();
+export const pathOf = (f: File) => (filePaths.get(f) || f.name).replace(/\\/g, '/').replace(/^\/+/, '');
+const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '');
+function normalizePath(p: string) {
+  const out: string[] = [];
+  for (const part of p.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') out.pop(); else out.push(part);
+  }
+  return out.join('/').toLowerCase();
+}
+
+/** Limits for ZIP archives, so a huge or malicious archive cannot freeze the tab (OV-014). */
+export const ZIP_LIMITS = { entries: 20_000, bytes: 2 * 1024 ** 3 };
+
+/** Expands ZIP archives into File objects, keeping their folder paths. Unzips off the main thread where possible. */
 async function expandZips(files: File[]): Promise<File[]> {
   const out: File[] = [];
   for (const f of files) {
     if (extOf(f.name) !== 'zip') { out.push(f); continue; }
-    const entries = unzipSync(new Uint8Array(await f.arrayBuffer()));
-    for (const [path, data] of Object.entries(entries)) {
-      if (path.endsWith('/') || path.startsWith('__MACOSX')) continue;
-      out.push(new File([data as BlobPart], path.split('/').pop()!));
+    const data = new Uint8Array(await f.arrayBuffer());
+    let count = 0, total = 0;
+    const filter = (info: { name: string; originalSize: number }) => {
+      if (info.name.endsWith('/') || info.name.startsWith('__MACOSX')) return false;
+      count++; total += info.originalSize;
+      if (count > ZIP_LIMITS.entries) throw new Error(`${f.name} has more than ${ZIP_LIMITS.entries.toLocaleString()} files. Unzip it and open the model files directly.`);
+      if (total > ZIP_LIMITS.bytes) throw new Error(`${f.name} expands to more than ${(ZIP_LIMITS.bytes / 1024 ** 3).toFixed(0)} GB. Unzip it and open the model files directly.`);
+      return true;
+    };
+    const entries: Record<string, Uint8Array> = await new Promise((resolve, reject) => {
+      // Size and count are checked from the archive directory before anything is decompressed.
+      try { unzipSync(data, { filter: (i) => { filter(i); return false; } }); } catch (e) { reject(e); return; }
+      count = 0; total = 0;
+      try { unzip(data, { filter }, (err, res) => (err ? resolve(unzipSync(data, { filter })) : resolve(res))); }
+      catch { try { resolve(unzipSync(data, { filter })); } catch (e) { reject(e); } }
+    });
+    const prefix = dirOf(pathOf(f));
+    for (const [path, bytes] of Object.entries(entries)) {
+      const file = new File([bytes as BlobPart], path.split('/').pop()!);
+      filePaths.set(file, prefix + path);
+      out.push(file);
     }
   }
   return out;
 }
+
+/** Physical unit a file declares (or its format defines), when known (OV-007). */
+export type DeclaredUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft';
 
 export interface LoadResult {
   object: THREE.Object3D;
   animations: THREE.AnimationClip[];
   mainFiles: string[];
   warnings: string[];
+  /** unit declared by the file itself or by its format specification */
+  declaredUnit?: DeclaredUnit;
+  /** textures / buffers that were missing, blocked or failed (OV-012, OV-104) */
+  resources: ResourceInfo[];
 }
 
+export interface ResourceInfo { url: string; owner: string; status: 'loaded' | 'missing' | 'blocked' | 'failed'; resolved?: string; ambiguous?: boolean }
+
 type Progress = (msg: string) => void;
+
+export interface LoadOptions {
+  /** base URL when the model was opened from the web: relative references resolve against it */
+  baseUrl?: string;
+  /** allow files on this device to fetch textures from other websites (off by default, OV-013) */
+  allowRemote?: boolean;
+  /** how long to wait for textures before reporting them as still loading */
+  textureTimeoutMs?: number;
+}
 
 /**
  * Loads a set of files (model files plus any companions such as textures and .mtl files)
  * and returns one Object3D containing every model found.
  */
-export async function loadFiles(input: File[], onProgress: Progress = () => {}, signal?: AbortSignal): Promise<LoadResult> {
+export async function loadFiles(input: File[], onProgress: Progress = () => {}, signal?: AbortSignal, opts: LoadOptions = {}): Promise<LoadResult> {
+  const aborted = () => { if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError'); };
   const files = await expandZips(input);
-  const urls = new Map<string, string>();
-  for (const f of files) urls.set(f.name.toLowerCase(), URL.createObjectURL(f));
+  aborted();
+  const byPath = new Map<string, File>();
+  const byBase = new Map<string, File[]>();
+  for (const f of files) {
+    byPath.set(normalizePath(pathOf(f)), f);
+    const b = f.name.toLowerCase();
+    byBase.set(b, [...(byBase.get(b) || []), f]);
+  }
+  const blobUrls = new Map<File, string>();
+  const urlFor = (f: File) => { let u = blobUrls.get(f); if (!u) { u = URL.createObjectURL(f); blobUrls.set(f, u); } return u; };
+  const resources: ResourceInfo[] = [];
+  let pending = 0;
+  let idle: (() => void) | null = null;
 
-  const manager = new THREE.LoadingManager();
-  manager.setURLModifier((url) => {
-    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-    return urls.get(baseName(url)) ?? url;
-  });
+  /** One loading manager per model file, resolving references relative to that file's folder. */
+  const managerFor = (main: File) => {
+    const m = new THREE.LoadingManager();
+    const dir = dirOf(pathOf(main));
+    const byResolved = new Map<string, ResourceInfo>();
+    const track = (info: ResourceInfo, out: string) => { byResolved.set(out, info); return out; };
+    m.setURLModifier((url) => {
+      if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+      const info: ResourceInfo = { url, owner: main.name, status: 'loaded' };
+      resources.push(info);
+      const isAbs = /^[a-z][a-z0-9+.-]*:/i.test(url);
+      if (!isAbs || url.startsWith('file:')) {
+        const rel = url.replace(/^file:\/+/, '');
+        const exact = byPath.get(normalizePath(dir + rel)) || byPath.get(normalizePath(rel));
+        if (exact) { info.resolved = pathOf(exact); return track(info, urlFor(exact)); }
+        const same = byBase.get(baseName(rel)) || [];
+        if (same.length) {
+          // Prefer the candidate whose folder shares the most with where the file says it is.
+          const want = normalizePath(dir + rel);
+          const score = (f: File) => { const p = normalizePath(pathOf(f)); let i = 0; while (i < p.length && p[i] === want[i]) i++; return i; };
+          const best = same.slice().sort((a, b) => score(b) - score(a))[0];
+          info.resolved = pathOf(best);
+          info.ambiguous = same.length > 1;
+          return track(info, urlFor(best));
+        }
+        if (opts.baseUrl) { info.resolved = new URL(rel, opts.baseUrl).href; return track(info, info.resolved); }
+        info.status = 'missing';
+        return track(info, 'data:,missing-' + encodeURIComponent(rel));
+      }
+      if (opts.baseUrl || opts.allowRemote) return track(info, url);
+      info.status = 'blocked';
+      return track(info, 'data:,blocked-' + encodeURIComponent(url));
+    });
+    // Count requests so we wait for exactly the textures that were asked for (OV-012).
+    const start = m.itemStart.bind(m), end = m.itemEnd.bind(m), error = m.itemError.bind(m);
+    m.itemStart = (u: string) => { pending++; start(u); };
+    m.itemEnd = (u: string) => { pending = Math.max(0, pending - 1); end(u); if (!pending) idle?.(); };
+    m.itemError = (u: string) => {
+      const info = byResolved.get(u);
+      if (info && info.status === 'loaded') info.status = 'failed';
+      error(u);
+    };
+    return m;
+  };
 
   const mains = files.filter((f) => MODEL_EXTS.has(extOf(f.name)));
   if (!mains.length) throw new Error('No supported 3D model was found in the selected files.');
@@ -109,36 +212,68 @@ export async function loadFiles(input: File[], onProgress: Progress = () => {}, 
   root.name = mains.length === 1 ? mains[0].name : 'Scene';
   const animations: THREE.AnimationClip[] = [];
   const warnings: string[] = [];
+  let declaredUnit: DeclaredUnit | undefined;
 
-  for (const file of mains) {
-    onProgress(`Reading ${file.name}…`);
-    try {
-      const { object, clips } = await loadOne(file, files, manager, onProgress, signal);
-      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-      if (!object.name) object.name = file.name;
-      root.add(object);
-      animations.push(...clips);
-    } catch (err: any) {
-      if (err?.name === 'AbortError') throw err;
-      console.error(err);
-      warnings.push(`${file.name}: ${err?.message || err}`);
+  try {
+    for (const file of mains) {
+      onProgress(`Reading ${file.name}…`);
+      try {
+        const { object, clips, unit } = await loadOne(file, files, managerFor(file), onProgress, signal);
+        aborted();
+        if (!object.name) object.name = file.name;
+        root.add(object);
+        animations.push(...clips);
+        if (unit && !declaredUnit) declaredUnit = unit;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') throw err;
+        console.error(err);
+        warnings.push(`${file.name}: ${err?.message || err}`);
+      }
     }
+    // Wait for the textures that were actually requested (not a fixed timer), honouring Cancel.
+    if (pending) {
+      onProgress(`Resolving ${pending} texture${pending === 1 ? '' : 's'}…`);
+      const timeout = opts.textureTimeoutMs ?? 30000;
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => { warnings.push(`${pending} texture${pending === 1 ? ' was' : 's were'} still loading after ${Math.round(timeout / 1000)} s.`); resolve(); }, timeout);
+        idle = () => { clearTimeout(t); resolve(); };
+        signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Cancelled', 'AbortError')); }, { once: true });
+        if (!pending) idle();
+      });
+    }
+    aborted();
+  } finally {
+    // Release object URLs once everything that needed them has finished (OV-015).
+    setTimeout(() => blobUrls.forEach((u) => URL.revokeObjectURL(u)), 1000);
   }
-  // Give textures a moment to finish streaming in.
-  await new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-    manager.onLoad = finish;
-    setTimeout(finish, 1500);
-  });
+  for (const r of resources) {
+    if (r.status === 'missing') warnings.push(`Missing file: ${baseName(r.url)} (needed by ${r.owner})`);
+    if (r.status === 'blocked') warnings.push(`Blocked a request to another website: ${r.url}. Files on your device don't fetch outside resources unless you allow it in Settings.`);
+    if (r.status === 'failed') warnings.push(`Could not read ${baseName(r.url)} (needed by ${r.owner})`);
+    if (r.ambiguous) warnings.push(`Several files are named ${baseName(r.url)}; used ${r.resolved}.`);
+  }
   if (!root.children.length) throw new Error(warnings.join('\n') || 'The model could not be loaded.');
-  return { object: root.children.length === 1 ? root.children[0] : root, animations, mainFiles: mains.map((f) => f.name), warnings };
+  return { object: root.children.length === 1 ? root.children[0] : root, animations, mainFiles: mains.map((f) => f.name), warnings, declaredUnit, resources };
+}
+
+/** True when a sample of the normals is (near) zero length or not a number. */
+function normalsUnusable(n: THREE.BufferAttribute): boolean {
+  const count = n.count; if (!count) return true;
+  const step = Math.max(1, Math.floor(count / 2000));
+  let bad = 0, seen = 0;
+  for (let i = 0; i < count; i += step) {
+    const l = n.getX(i) ** 2 + n.getY(i) ** 2 + n.getZ(i) ** 2;
+    if (!(l > 0.25)) bad++;
+    seen++;
+  }
+  return bad / seen > 0.5;
 }
 
 function meshFromGeometry(geometry: THREE.BufferGeometry, name: string): THREE.Object3D {
   const hasFaces = geometry.index !== null || geometry.attributes.position.count % 3 === 0;
   const hasColors = !!geometry.attributes.color;
-  if (!geometry.attributes.normal && hasFaces) geometry.computeVertexNormals();
+  // Missing or unusable normals (many STL exporters write 0,0,0 facet normals) render black: rebuild them.
+  if (hasFaces && (!geometry.attributes.normal || normalsUnusable(geometry.attributes.normal as THREE.BufferAttribute))) geometry.computeVertexNormals();
   const mat = defaultMaterial();
   if (hasColors) { mat.vertexColors = true; mat.color.set(0xffffff); }
   const mesh = new THREE.Mesh(geometry, mat);
@@ -161,12 +296,12 @@ async function loadOne(
   manager: THREE.LoadingManager,
   onProgress: Progress,
   signal?: AbortSignal,
-): Promise<{ object: THREE.Object3D; clips: THREE.AnimationClip[] }> {
+): Promise<{ object: THREE.Object3D; clips: THREE.AnimationClip[]; unit?: DeclaredUnit }> {
   const ext = extOf(file.name);
   const name = file.name;
   const buf = () => file.arrayBuffer();
   const text = () => file.text();
-  const one = (object: THREE.Object3D, clips: THREE.AnimationClip[] = []) => ({ object, clips });
+  const one = (object: THREE.Object3D, clips: THREE.AnimationClip[] = [], unit?: DeclaredUnit) => ({ object, clips, unit });
 
   switch (ext) {
     case 'glb':
@@ -182,7 +317,7 @@ async function loadOne(
       loader.setKTX2Loader(ktx2);
       loader.setMeshoptDecoder(MeshoptDecoder);
       const gltf = await loader.parseAsync(await buf(), '');
-      return one(gltf.scene, gltf.animations);
+      return one(gltf.scene, gltf.animations, 'm'); // glTF is defined in metres
     }
     case 'obj': {
       const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
@@ -231,12 +366,13 @@ async function loadOne(
     }
     case '3mf': {
       const { ThreeMFLoader } = await import('three/addons/loaders/3MFLoader.js');
-      return one(new ThreeMFLoader(manager).parse(await buf()));
+      const data = await buf();
+      return one(new ThreeMFLoader(manager).parse(data), [], unitOf3MF(data));
     }
     case 'dae': {
       const { ColladaLoader } = await import('three/addons/loaders/ColladaLoader.js');
       const res: any = new ColladaLoader(manager).parse(await text(), '');
-      return one(res.scene, res.scene?.animations || []);
+      return one(res.scene, res.scene?.animations || [], 'm'); // the loader applies <unit meter>
     }
     case '3ds': {
       const { TDSLoader } = await import('three/addons/loaders/TDSLoader.js');
@@ -244,7 +380,7 @@ async function loadOne(
     }
     case 'amf': {
       const { AMFLoader } = await import('three/addons/loaders/AMFLoader.js');
-      return one(new AMFLoader(manager).parse(await buf()));
+      return one(new AMFLoader(manager).parse(await buf()), [], 'mm'); // the loader converts to millimetres
     }
     case 'wrl':
     case 'vrml': {
@@ -265,8 +401,11 @@ async function loadOne(
     case 'xyz': {
       const { XYZLoader } = await import('three/addons/loaders/XYZLoader.js');
       const loader = new XYZLoader(manager);
-      const geo: THREE.BufferGeometry = await new Promise((res, rej) => loader.load(URL.createObjectURL(file), res, undefined, rej));
-      return one(pointsFromGeometry(geo, name));
+      const url = URL.createObjectURL(file);
+      try {
+        const geo: THREE.BufferGeometry = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+        return one(pointsFromGeometry(geo, name));
+      } finally { URL.revokeObjectURL(url); }
     }
     case 'pcd': {
       const { PCDLoader } = await import('three/addons/loaders/PCDLoader.js');
@@ -291,7 +430,9 @@ async function loadOne(
     case 'gcode':
     case 'gco': {
       const { GCodeLoader } = await import('three/addons/loaders/GCodeLoader.js');
-      return one(new GCodeLoader(manager).parse(await text()));
+      const gl = new GCodeLoader(manager);
+      (gl as any).splitLayer = true; // one object per layer, for the layer slider (OV-113)
+      return one(gl.parse(await text()), [], 'mm');
     }
     case 'lwo': {
       const { LWOLoader } = await import('three/addons/loaders/LWOLoader.js');
@@ -303,7 +444,7 @@ async function loadOne(
     case 'kmz': {
       const { KMZLoader } = await import('three/addons/loaders/KMZLoader.js');
       const res: any = new KMZLoader(manager).parse(await buf());
-      return one(res.scene);
+      return one(res.scene, [], 'm');
     }
     case 'vox': {
       const { VOXLoader } = await import('three/addons/loaders/VOXLoader.js');
@@ -324,12 +465,12 @@ async function loadOne(
       loader.setLibraryPath(libUrl('rhino3dm/'));
       const data = await buf();
       const obj = await new Promise<THREE.Object3D>((res, rej) => loader.parse(data, res, rej));
-      return one(obj);
+      return one(obj, [], unitOf3dm(obj));
     }
     case 'ifc': {
       const { loadIFC } = await import('./ifc');
       onProgress('Starting the IFC engine…');
-      return one(await loadIFC(await buf(), name, onProgress));
+      return one(await loadIFC(await buf(), name, onProgress), [], 'm'); // web-ifc outputs metres
     }
     case 'step':
     case 'stp':
@@ -339,7 +480,7 @@ async function loadOne(
     case 'brp': {
       const { loadCAD } = await import('./cad');
       onProgress('Starting the CAD engine (first time can take a few seconds)…');
-      return one(await loadCAD(await buf(), ext, name, onProgress, signal));
+      return one(await loadCAD(await buf(), ext, name, onProgress, signal), [], 'mm'); // tessellated in millimetres
     }
     case 'off':
       return one(meshFromGeometry(parseOFF(await text()), name));
@@ -347,7 +488,36 @@ async function loadOne(
   throw new Error(`Unsupported format: .${ext}`);
 }
 
-/** Minimal OFF / COFF parser (polygons are fan-triangulated). */
+/** Reads the unit a 3MF package declares (<model unit="inch">). */
+function unitOf3MF(data: ArrayBuffer): DeclaredUnit | undefined {
+  try {
+    const files = unzipSync(new Uint8Array(data), { filter: (f) => /\.model$/i.test(f.name) });
+    for (const bytes of Object.values(files)) {
+      const head = new TextDecoder().decode(bytes.subarray(0, 4096));
+      const m = head.match(/<model[^>]*\sunit\s*=\s*"([a-z]+)"/i);
+      const map: Record<string, DeclaredUnit> = { micron: 'mm', millimeter: 'mm', centimeter: 'cm', meter: 'm', inch: 'in', foot: 'ft' };
+      return map[(m?.[1] || 'millimeter').toLowerCase()] ?? 'mm';
+    }
+  } catch { /* not readable */ }
+  return 'mm';
+}
+
+/** Reads Rhino's model unit system from the loaded file settings. */
+function unitOf3dm(obj: THREE.Object3D): DeclaredUnit | undefined {
+  const s: any = obj.userData?.settings?.modelUnitSystem;
+  const v = typeof s === 'object' && s ? (s.value ?? s.name ?? s.constructor?.name) : s;
+  const byNum: Record<number, DeclaredUnit> = { 2: 'mm', 3: 'cm', 4: 'm', 8: 'in', 9: 'ft' };
+  if (typeof v === 'number') return byNum[v];
+  const str = String(v ?? '').toLowerCase();
+  if (str.includes('milli')) return 'mm';
+  if (str.includes('centi')) return 'cm';
+  if (str.includes('inch')) return 'in';
+  if (str.includes('feet') || str.includes('foot')) return 'ft';
+  if (str.includes('meter') || str.includes('metre')) return 'm';
+  return undefined;
+}
+
+/** Minimal OFF / COFF parser. Polygons are ear-clipped so concave faces stay correct (audit OFF note). */
 function parseOFF(src: string): THREE.BufferGeometry {
   const lines = src.split(/\r?\n/).map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
   let i = 0;
@@ -368,10 +538,21 @@ function parseOFF(src: string): THREE.BufferGeometry {
     }
   }
   const idx: number[] = [];
+  const v3 = (k: number) => new THREE.Vector3(pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]);
   for (let f = 0; f < nf; f++) {
     const p = lines[i++].split(/\s+/).map(Number);
     const n = p[0];
-    for (let k = 2; k < n; k++) idx.push(p[1], p[k], p[k + 1]);
+    const ids = p.slice(1, n + 1);
+    if (n <= 3) { if (n === 3) idx.push(...ids); continue; }
+    // Project the polygon onto its best-fit plane and ear-clip it.
+    const pts = ids.map(v3);
+    const normal = new THREE.Vector3();
+    for (let k = 0; k < n; k++) { const a = pts[k], b = pts[(k + 1) % n]; normal.x += (a.y - b.y) * (a.z + b.z); normal.y += (a.z - b.z) * (a.x + b.x); normal.z += (a.x - b.x) * (a.y + b.y); }
+    const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+    const flat = pts.map((q) => (az >= ax && az >= ay ? new THREE.Vector2(q.x, q.y) : ax >= ay ? new THREE.Vector2(q.y, q.z) : new THREE.Vector2(q.z, q.x)));
+    const tris = THREE.ShapeUtils.triangulateShape(flat, []);
+    const flip = THREE.ShapeUtils.isClockWise(flat) !== ((az >= ax && az >= ay ? normal.z : ax >= ay ? normal.x : normal.y) < 0);
+    for (const t of tris) idx.push(ids[t[0]], ids[flip ? t[2] : t[1]], ids[flip ? t[1] : t[2]]);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

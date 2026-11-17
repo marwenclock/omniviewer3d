@@ -281,6 +281,28 @@ export function replaceGeometries(changes: { mesh: THREE.Mesh; geometry: THREE.B
     ctx.viewer.refreshMaterials();
     ctx.refresh();
   };
-  ctx.history.push({ label, undo: () => apply(before), redo: () => apply(after) });
+  // Undo snapshots keep whole geometries alive: report their size for the memory budget and release them
+  // once they can't come back (OV-090). Shared geometries still used elsewhere are left alone.
+  const bytesOf = (g: THREE.BufferGeometry) => Object.values(g.attributes).reduce((n, at: any) => n + at.array.byteLength, 0) + (g.index?.array.byteLength || 0);
+  const used = (g: THREE.BufferGeometry) => { let n = 0; ctx.viewer.model?.traverse((o: any) => { if (o.geometry === g) n++; }); return n > 0; };
+  ctx.history.push({
+    label, undo: () => apply(before), redo: () => apply(after),
+    bytes: before.reduce((n, b) => n + bytesOf(b.geometry), 0) + after.reduce((n, b) => n + bytesOf(b.geometry), 0),
+    dispose: (applied) => { for (const s of applied ? before : after) if (!used(s.geometry)) s.geometry.dispose(); },
+  });
   apply(after);
+}
+
+/** Attributes that a rebuild drops (UVs, tangents, skinning…), for honest warnings before repair / reduce (OV-022). */
+export function lostAttributes(meshes: THREE.Mesh[]): string[] {
+  const lost = new Set<string>();
+  for (const m of meshes) {
+    const g = m.geometry;
+    if (g.attributes.uv) lost.add('UV mapping (textures will not line up)');
+    if (g.attributes.tangent) lost.add('tangents');
+    if (g.attributes.skinIndex) lost.add('skinning (animation rig)');
+    if (g.morphAttributes && Object.keys(g.morphAttributes).length) lost.add('morph targets');
+    if (Array.isArray(m.material) && m.material.length > 1) lost.add('multiple materials per part (merged into the first)');
+  }
+  return [...lost];
 }

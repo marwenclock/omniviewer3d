@@ -64,6 +64,16 @@ const P: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   splat: '<circle cx="8" cy="9" r="3"/><circle cx="15" cy="7" r="2"/><circle cx="15" cy="15" r="4"/><circle cx="7" cy="17" r="2"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  bed: '<path d="M3 16h18l-2 4H5z"/><path d="M8 16V9h8v7"/><path d="M3 16 5 6h14l2 10" stroke-dasharray="2 2"/>',
+  overhang: '<path d="M4 20h16"/><path d="M8 20V12h4l6-5"/><path d="m13 11 3 3M15 9.5l3 3" stroke-width="1.2"/>',
+  clash: '<rect x="3" y="6" width="10" height="10" rx="1.5"/><rect x="11" y="9" width="10" height="10" rx="1.5"/><path d="M11 9h2v7h-2z" fill="currentColor"/>',
+  report: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 15.5h7M9 9h3"/>',
+  drawing: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 15h5v-5H7zM15 15h2M15 10h2v5"/><path d="M7 18h5" stroke-dasharray="1.5 1.5"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  warn: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/>',
+  minus: '<path d="M5 12h14"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  drain: '<path d="M6 4h12v10a6 6 0 0 1-12 0z"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/>',
 };
 
 export function icon(name: string, cls = ''): string {

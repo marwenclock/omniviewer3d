@@ -9,6 +9,9 @@ import { initLook } from './look';
 import { initTurntable } from './turntable';
 import { initCompare } from './compare';
 import { initBuild } from './build';
+import { initAssets } from './assets';
+import { initPrepare } from './prepare';
+import { initReport } from './report';
 
 export function initFeatures() {
   initPrintTools();
@@ -21,4 +24,7 @@ export function initFeatures() {
   initTurntable();
   initCompare();
   initBuild();
+  initAssets();
+  initPrepare();
+  initReport();
 }

@@ -8,6 +8,8 @@ export interface RecentEntry {
   /** local files are stored as blobs; URL-opened models only store the links */
   files?: { name: string; blob: Blob }[];
   urls?: string[];
+  /** small preview image (data URL) */
+  thumb?: string;
 }
 
 const DB = 'omniviewer';
@@ -40,7 +42,7 @@ export async function listRecent(): Promise<RecentEntry[]> {
   } catch { return []; }
 }
 
-export async function addRecent(name: string, files: File[] | null, urls: string[] | null) {
+export async function addRecent(name: string, files: File[] | null, urls: string[] | null, thumb?: string) {
   try {
     const size = files ? files.reduce((n, f) => n + f.size, 0) : 0;
     const key = urls ? 'url:' + urls.join(',') : 'file:' + (files || []).map((f) => `${f.name}:${f.size}`).join(',');
@@ -48,6 +50,7 @@ export async function addRecent(name: string, files: File[] | null, urls: string
       id: key, name, date: Date.now(), size,
       files: files && size <= MAX_BYTES ? files.map((f) => ({ name: f.name, blob: f })) : undefined,
       urls: urls || undefined,
+      thumb,
     };
     if (!entry.files && !entry.urls) return; // too big to keep
     await tx('readwrite', (s) => s.put(entry));

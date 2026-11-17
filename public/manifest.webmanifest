@@ -1,10 +1,25 @@
 {
+  "id": "/",
   "name": "OMNIVIEWER by BANKASI MEDIA",
   "short_name": "OMNIVIEWER",
-  "description": "Free online 3D viewer, converter and editor. No ads, no uploads.",
+  "description": "Free 3D viewer and toolkit. Open, inspect, measure and convert 3D files on your device. No ads, no account.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0a0a0a",
+  "background_color": "#151515",
   "theme_color": "#151515",
-  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Convert a file", "url": "./convert/" },
+    { "name": "Batch convert", "url": "./batch-3d-converter/" },
+    { "name": "Measure a model", "url": "./measure/" }
+  ],
+  "file_handlers": [
+    { "action": "./", "accept": { "model/stl": [".stl"], "model/gltf-binary": [".glb"], "model/gltf+json": [".gltf"], "model/obj": [".obj"], "model/3mf": [".3mf"], "application/step": [".step", ".stp"], "application/octet-stream": [".fbx", ".ply", ".3dm", ".ifc", ".omniproj"] } }
+  ]
 }

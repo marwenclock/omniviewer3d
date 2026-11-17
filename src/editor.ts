@@ -15,6 +15,8 @@ const setTrs = (o: THREE.Object3D, t: TRS) => { o.position.copy(t.p); o.quaterni
 /** Lightweight editing: selection gizmo, primitives, duplicate/delete, mirror, materials and scaling. */
 export class Editor {
   selected: THREE.Object3D | null = null;
+  /** extra parts picked with Ctrl / Shift (OV-038); `selected` is the primary one the gizmo follows */
+  readonly multi = new Set<THREE.Object3D>();
   gizmo: GizmoMode = 'none';
   snap = false;
   readonly transform: TransformControls;
@@ -70,7 +72,20 @@ export class Editor {
   private emit() { this.listeners.forEach((f) => f()); }
   private changed() { this.viewer.rebaseExplode(); this.onEdited(); this.emit(); }
 
-  select(obj: THREE.Object3D | null) {
+  /** Everything currently selected (primary first). */
+  get selection(): THREE.Object3D[] { return this.selected ? [this.selected, ...[...this.multi].filter((o) => o !== this.selected)] : [...this.multi]; }
+
+  /** Ctrl/Shift-click: adds or removes a part from the selection set. */
+  toggleInSelection(obj: THREE.Object3D) {
+    if (obj === this.selected) { const next = [...this.multi][0] ?? null; this.multi.delete(next as any); this.select(next, true); return; }
+    if (this.multi.has(obj)) this.multi.delete(obj);
+    else if (!this.selected) { this.select(obj, true); return; }
+    else this.multi.add(obj);
+    this.emit();
+  }
+
+  select(obj: THREE.Object3D | null, keepMulti = false) {
+    if (!keepMulti) this.multi.clear();
     this.selected = obj;
     if (obj) { this.boxHelper.setFromObject(obj); this.boxHelper.visible = true; }
     else this.boxHelper.visible = false;
@@ -321,9 +336,66 @@ export class Editor {
     });
   }
 
+  /** Show / hide as an undoable action (OV-042), so it also counts as an unsaved change that affects exports. */
+  setVisibility(objs: THREE.Object3D[], visible: boolean | ((o: THREE.Object3D) => boolean), label?: string) {
+    const before = objs.map((o) => o.visible);
+    const after = objs.map((o) => (typeof visible === 'function' ? visible(o) : visible));
+    if (before.every((b, i) => b === after[i])) return;
+    const apply = (vals: boolean[]) => { objs.forEach((o, i) => (o.visible = vals[i])); this.viewer.emit(); this.emit(); this.onEdited(); };
+    this.history.run({
+      label: label ?? (after.some(Boolean) ? 'Show' : 'Hide'),
+      redo: () => apply(after),
+      undo: () => apply(before),
+    });
+  }
+
   toggleVisibility(obj: THREE.Object3D) {
-    obj.visible = !obj.visible;
-    this.emit();
-    this.onEdited();
+    this.setVisibility([obj], !obj.visible, `${obj.visible ? 'Hide' : 'Show'} ${obj.name || 'part'}`);
+  }
+
+  /** Puts the selected parts into a new group (OV-038), as one undo step. */
+  groupSelection(name = 'Group') {
+    const parts = this.selection.filter((o) => o !== this.viewer.model && o.parent);
+    if (parts.length < 2) return;
+    const parent = parts[0].parent!;
+    const group = new THREE.Group();
+    group.name = name;
+    const placements = parts.map((p) => ({ obj: p, parent: p.parent!, index: p.parent!.children.indexOf(p), matrix: p.matrix.clone() }));
+    this.history.run({
+      label: `Group ${parts.length} parts`,
+      redo: () => { parent.add(group); for (const p of parts) group.attach(p); this.select(group); this.changed(); },
+      undo: () => {
+        for (const pl of placements) { pl.parent.add(pl.obj); pl.obj.matrix.copy(pl.matrix); pl.obj.matrix.decompose(pl.obj.position, pl.obj.quaternion, pl.obj.scale); }
+        group.removeFromParent(); this.select(parts[0]); this.changed();
+      },
+    });
+  }
+
+  /** Moves a group's children back to its parent (OV-038). */
+  ungroup(group: THREE.Object3D) {
+    if (!group.parent || group === this.viewer.model || !group.children.length) return;
+    const parent = group.parent, kids = [...group.children], index = parent.children.indexOf(group);
+    const saved = kids.map((k) => k.matrix.clone());
+    this.history.run({
+      label: 'Ungroup',
+      redo: () => { for (const k of kids) parent.attach(k); group.removeFromParent(); this.select(kids[0]); this.changed(); },
+      undo: () => {
+        parent.children.splice(index, 0, group); group.parent = parent;
+        kids.forEach((k, i) => { group.add(k); k.matrix.copy(saved[i]); k.matrix.decompose(k.position, k.quaternion, k.scale); });
+        this.select(group); this.changed();
+      },
+    });
+  }
+
+  /** Deletes every selected part in one undo step. */
+  deleteSelection() {
+    const parts = this.selection.filter((o) => o !== this.viewer.model && o.parent);
+    if (parts.length <= 1) { this.deleteSelected(); return; }
+    const where = parts.map((o) => ({ o, parent: o.parent!, index: o.parent!.children.indexOf(o) }));
+    this.history.run({
+      label: `Delete ${parts.length} parts`,
+      redo: () => { for (const w of where) w.parent.remove(w.o); this.select(null); this.changed(); },
+      undo: () => { for (const w of where.slice().reverse()) { w.parent.children.splice(w.index, 0, w.o); w.o.parent = w.parent; } this.select(parts[0]); this.changed(); },
+    });
   }
 }

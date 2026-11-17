@@ -21,9 +21,25 @@ export interface AppContext {
   selectObject(o: THREE.Object3D | null): void;
   openFiles(files: File[], urls?: string[] | null): Promise<void>;
   modelName(): string;
+  /** stable identity of the open model (name + size) for saved views (OV-098) */
+  modelId?(): string;
   baseFileName(): string;
   openModal(html: string): void;
   closeModal(): void;
+  fmtDisp(v: number, digits?: number): string;
+  toDisp(v: number): number;
+  dispUnitShort(): string;
+  unitInfo(): { unit: Unit; source: string; label: string; display: Unit };
+  stats(): import('./stats').ModelStats | null;
+  caps(): import('./capabilities').Capabilities | null;
+  resources(): import('./loaders').ResourceInfo[];
+  measurements(): import('./tools/measure').Measurement[];
+  measure: import('./tools/measure').MeasureTool;
+  upAxis(): 'y' | 'z';
+  fileExt(): string;
+  diagnostics(): string;
+  appVersion: string;
+  isPhone(): boolean;
 }
 
 export const ctx = {} as AppContext;

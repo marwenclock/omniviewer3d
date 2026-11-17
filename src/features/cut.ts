@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { analyse } from './geom';
 import { ctx, targetMeshes } from '../context';
 import { registerPanel, registerCommand } from '../registry';
 import { weld, toGeometry, type Welded } from './geom';
@@ -185,7 +186,11 @@ function cutModel() {
     ctx.editor.select(null); ctx.viewer.refreshMaterials(); ctx.refresh();
   };
   ctx.history.run({ label: 'Cut model', redo, undo });
-  ctx.toast(`Cut into ${changes.length * 2} parts. Each half is closed and can be exported on its own.`);
+  // Re-check both halves instead of promising they are closed (CA-11).
+  const open = changes.flatMap((c) => [c.a, c.b]).filter((m) => { const r = analyse(m); return r.openEdges > 0 || r.nonManifoldEdges > 0; });
+  ctx.toast(open.length
+    ? `Cut into ${changes.length * 2} parts. ${open.length} half${open.length === 1 ? ' is' : 's are'} not fully closed (the original had holes or overlaps): check with Repair before printing.`
+    : `Cut into ${changes.length * 2} parts. Both halves were checked and are closed.`, open.length > 0);
 }
 
 // ------------------------------------------------------------------ outline export (SVG / DXF)
@@ -212,9 +217,11 @@ function exportOutline(kind: 'svg' | 'dxf') {
   const unit = UNITS[ctx.unit()];
   const name = `${ctx.baseFileName()}-section.${kind}`;
   if (kind === 'svg') {
-    const w = box.max.x - box.min.x, h = box.max.y - box.min.y;
-    const svgUnit = ['mm', 'cm', 'in'].includes(unit.short) ? unit.short : '';
-    const d = polys.map((poly) => 'M' + poly.map((p) => `${(p.x - box.min.x).toFixed(4)} ${(box.max.y - p.y).toFixed(4)}`).join(' L') + ' Z').join(' ');
+    // SVG only knows mm, cm and in: metres and feet are converted to millimetres so the size stays physical (OV-029).
+    const svgUnit = ['mm', 'cm', 'in'].includes(unit.short) ? unit.short : unit.short === 'u' ? '' : 'mm';
+    const k = svgUnit === 'mm' && !['mm'].includes(unit.short) ? unit.toMeters * 1000 : 1;
+    const w = (box.max.x - box.min.x) * k, h = (box.max.y - box.min.y) * k;
+    const d = polys.map((poly) => 'M' + poly.map((p) => `${((p.x - box.min.x) * k).toFixed(4)} ${((box.max.y - p.y) * k).toFixed(4)}`).join(' L') + ' Z').join(' ');
     const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(4)}${svgUnit}" height="${h.toFixed(4)}${svgUnit}" viewBox="0 0 ${w.toFixed(4)} ${h.toFixed(4)}">
   <path d="${d}" fill="none" stroke="#000" stroke-width="${(Math.max(w, h) / 1000).toFixed(4)}" fill-rule="evenodd"/>
@@ -246,7 +253,7 @@ registerPanel({
       <div class="row"><label>Position</label><input type="range" min="0" max="1" step="0.001" value="${s.t}" data-cutpos /></div>
       <div class="row"><label>Gap</label><input type="number" min="0" step="any" value="${gap}" data-cutgap /><span class="cost-unit">${u}</span></div>
       <div class="btn-row"><button class="btn-solid" data-cut>Cut</button></div>
-      <p class="note">Cuts ${ctx.editor.selected ? 'the selected part' : 'every part the plane crosses'} into two closed halves, ready to print or export separately. Undo with Ctrl+Z.</p>
+      <p class="note">Applies to: <b>${ctx.editor.selected ? 'the selected part' : 'every visible part the plane crosses'}</b>. Each half gets a flat face and is checked afterwards. Undo with Ctrl+Z.</p>
       <div class="field-label" style="margin-top:12px">Section outline (for laser cutting / CNC)</div>
       <div class="btn-row" style="margin-top:6px"><button class="chip" data-outline="svg">${'Save SVG'}</button><button class="chip" data-outline="dxf">Save DXF</button></div>`;
   },

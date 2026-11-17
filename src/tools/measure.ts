@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Viewer } from '../viewer';
 
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
 export interface Measurement {
   id: number;
   a: THREE.Vector3;
@@ -21,16 +23,38 @@ export interface Measurement {
   radius?: number;
   center?: THREE.Vector3;
   group: THREE.Group;
+  /** user-given name (OV-102) */
+  name: string;
+  hidden: boolean;
+  color: string;
+  /** set when the model was edited after measuring: the value may be out of date (OV-102) */
+  stale: boolean;
+  /** how the end points were snapped */
+  snapA?: SnapKind;
+  snapB?: SnapKind;
 }
+
+export type SnapKind = 'corner' | 'midpoint' | 'edge' | 'face centre' | 'surface';
+export type SnapMode = 'auto' | 'corner' | 'edge' | 'face' | 'off';
+export interface SavedMeasurement { name: string; kind: 'distance' | 'circle'; a: number[]; b: number[]; c?: number[]; na?: number[] | null; nb?: number[] | null; color: string; hidden: boolean; stale: boolean }
 
 /** Point-to-point measuring with optional vertex snapping. */
 export class MeasureTool {
   active = false;
-  snap = true;
+  /** legacy on/off switch (kept for settings) */
+  get snap() { return this.snapMode !== 'off'; }
+  set snap(v: boolean) { this.snapMode = v ? 'auto' : 'off'; }
+  snapMode: SnapMode = 'auto';
+  /** snap distance on screen in CSS pixels; touch uses a larger radius (OV-065) */
+  snapRadius = 12;
+  /** only pick on these objects (selection filter, OV-103); null = whole model */
+  pickTargets: () => THREE.Object3D[] | undefined = () => undefined;
+  private snapLabel: CSS2DObject | null = null;
+  private lastPointer: 'mouse' | 'touch' | 'pen' = 'mouse';
   mode: 'distance' | 'circle' = 'distance';
   private circlePts: { p: THREE.Vector3; marker: THREE.Object3D }[] = [];
   list: Measurement[] = [];
-  private pending: { p: THREE.Vector3; n: THREE.Vector3 | null; marker: THREE.Object3D } | null = null;
+  private pending: { p: THREE.Vector3; n: THREE.Vector3 | null; marker: THREE.Object3D; kind?: SnapKind } | null = null;
   private markers = new Set<THREE.Object3D>();
   private nextId = 1;
   private hover: THREE.Mesh;
@@ -42,6 +66,12 @@ export class MeasureTool {
     this.hover.visible = false;
     this.hover.userData.noShot = true;
     viewer.overlay.add(this.hover);
+    const el = document.createElement('div');
+    el.className = 'snap-label';
+    this.snapLabel = new CSS2DObject(el);
+    this.snapLabel.userData.noShot = true;
+    this.snapLabel.visible = false;
+    viewer.overlay.add(this.snapLabel);
     // Keep markers a constant size on screen.
     viewer.onFrame(() => {
       const cam = viewer.camera;
@@ -76,28 +106,41 @@ export class MeasureTool {
   }
 
   private hitPoint(event: PointerEvent) {
-    const hit = this.viewer.pick(event);
+    this.lastPointer = (event.pointerType as any) || 'mouse';
+    const hit = this.viewer.pick(event, this.pickTargets());
     if (!hit) return null;
     const p = hit.point.clone();
     let n: THREE.Vector3 | null = null;
     const obj = hit.object as THREE.Mesh;
-    if (hit.face) n = hit.face.normal.clone().transformDirection(obj.matrixWorld).normalize();
-    if (this.snap && hit.face && obj.geometry) {
-      // Snap to the nearest triangle corner if it is within ~12px on screen.
+    // Normals transform with the inverse-transpose of the world matrix, so non-uniform scale stays correct (OV-027).
+    if (hit.face) n = hit.face.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(obj.matrixWorld)).normalize();
+    let kind: SnapKind = 'surface';
+    if (this.snapMode !== 'off' && hit.face && obj.geometry) {
       const pos = obj.geometry.attributes.position as THREE.BufferAttribute;
       const rect = this.viewer.renderer.domElement.getBoundingClientRect();
-      let best: THREE.Vector3 | null = null, bestD = 12;
-      for (const i of [hit.face.a, hit.face.b, hit.face.c]) {
-        const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld);
-        const s = v.clone().project(this.viewer.camera);
-        const sx = ((s.x + 1) / 2) * rect.width + rect.left;
-        const sy = ((1 - s.y) / 2) * rect.height + rect.top;
-        const d = Math.hypot(sx - event.clientX, sy - event.clientY);
-        if (d < bestD) { bestD = d; best = v; }
+      const radius = this.lastPointer === 'touch' ? Math.max(this.snapRadius, 26) : this.snapRadius;
+      const screen = (v: THREE.Vector3) => { const s = v.clone().project(this.viewer.camera); return { x: ((s.x + 1) / 2) * rect.width + rect.left, y: ((1 - s.y) / 2) * rect.height + rect.top }; };
+      const dist = (v: THREE.Vector3) => { const q = screen(v); return Math.hypot(q.x - event.clientX, q.y - event.clientY); };
+      const tri = [hit.face.a, hit.face.b, hit.face.c].map((i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld));
+      const candidates: { v: THREE.Vector3; d: number; kind: SnapKind; prio: number }[] = [];
+      if (this.snapMode === 'auto' || this.snapMode === 'corner') for (const v of tri) candidates.push({ v, d: dist(v), kind: 'corner', prio: 0 });
+      if (this.snapMode === 'auto' || this.snapMode === 'edge') {
+        for (let k = 0; k < 3; k++) {
+          const a = tri[k], b = tri[(k + 1) % 3];
+          const mid = a.clone().add(b).multiplyScalar(0.5);
+          candidates.push({ v: mid, d: dist(mid), kind: 'midpoint', prio: 1 });
+          const onEdge = new THREE.Line3(a, b).closestPointToPoint(hit.point, true, new THREE.Vector3());
+          candidates.push({ v: onEdge, d: dist(onEdge) + (this.snapMode === 'edge' ? 0 : 3), kind: 'edge', prio: 2 });
+        }
       }
-      if (best) p.copy(best);
+      if (this.snapMode === 'face' || this.snapMode === 'auto') {
+        const c = tri[0].clone().add(tri[1]).add(tri[2]).divideScalar(3);
+        candidates.push({ v: c, d: this.snapMode === 'face' ? 0 : dist(c) + 4, kind: 'face centre', prio: 3 });
+      }
+      const best = candidates.filter((c) => c.d <= radius).sort((x, y) => x.prio - y.prio || x.d - y.d)[0];
+      if (best) { p.copy(best.v); kind = best.kind; }
     }
-    return { p, n };
+    return { p, n, kind };
   }
 
   onPointerMove(event: PointerEvent) {
@@ -105,6 +148,11 @@ export class MeasureTool {
     const h = this.hitPoint(event);
     this.hover.visible = !!h;
     if (h) this.hover.position.copy(h.p);
+    // Show which snap will be used, so the intended edge or corner is unambiguous (OV-103).
+    if (this.snapLabel) {
+      this.snapLabel.visible = !!h && h.kind !== 'surface';
+      if (h) { this.snapLabel.position.copy(h.p); this.snapLabel.element.textContent = h.kind; }
+    }
   }
 
   /** Returns true when the click was consumed. */
@@ -118,14 +166,14 @@ export class MeasureTool {
       marker.position.copy(h.p);
       this.viewer.overlay.add(marker);
       this.markers.add(marker);
-      this.pending = { p: h.p, n: h.n, marker };
+      this.pending = { p: h.p, n: h.n, marker, kind: h.kind };
       return true;
     }
     this.finish(this.pending, h);
     return true;
   }
 
-  private finish(start: NonNullable<MeasureTool['pending']>, end: { p: THREE.Vector3; n: THREE.Vector3 | null }) {
+  private finish(start: NonNullable<MeasureTool['pending']>, end: { p: THREE.Vector3; n: THREE.Vector3 | null; kind?: SnapKind }, preset?: Partial<Measurement>) {
     const group = new THREE.Group();
     group.userData.helper = true;
     const a = start.p, b = end.p;
@@ -152,13 +200,14 @@ export class MeasureTool {
     const el = document.createElement('div');
     el.className = 'measure-label';
     const id = this.nextId++;
-    el.innerHTML = `<span class="ml-id">#${id}</span> ${this.format(distance)}`;
     const label = new CSS2DObject(el);
     label.position.copy(a).add(b).multiplyScalar(0.5);
     group.add(ma, mb, line, label);
     this.viewer.overlay.add(group);
     this.pending = null;
-    this.list.push({ id, a, b, na: start.n, nb: end.n, distance, delta, angle, parallelDistance, planeDistance, kind: 'distance', group });
+    const m: Measurement = { id, a, b, na: start.n, nb: end.n, distance, delta, angle, parallelDistance, planeDistance, kind: 'distance', group, name: `#${id}`, hidden: false, color: '#ffffff', stale: false, snapA: start.kind, snapB: end.kind, ...preset };
+    this.list.push(m);
+    this.style(m);
     this.emit();
   }
 
@@ -197,13 +246,61 @@ export class MeasureTool {
     const el = document.createElement('div');
     el.className = 'measure-label';
     const id = this.nextId++;
-    el.innerHTML = `<span class="ml-id">#${id}</span> ⌀ ${this.format(radius * 2)}`;
     const label = new CSS2DObject(el);
     label.position.copy(center);
     group.add(line, dia, cm, label);
     this.viewer.overlay.add(group);
-    this.list.push({ id, a: A, b: C, na: null, nb: null, distance: radius * 2, delta: new THREE.Vector3(), angle: null, parallelDistance: null, planeDistance: null, kind: 'circle', radius, center, group });
+    const m: Measurement = { id, a: A, b: C, na: null, nb: null, distance: radius * 2, delta: new THREE.Vector3(), angle: null, parallelDistance: null, planeDistance: null, kind: 'circle', radius, center, group, name: `#${id}`, hidden: false, color: '#ffffff', stale: false, ...this.circlePreset };
+    this.circlePreset = undefined;
+    this.circleB = B;
+    m.group.userData.b2 = B.toArray();
+    this.list.push(m);
+    this.style(m);
     this.emit();
+  }
+
+  private circlePreset?: Partial<Measurement>;
+  private circleB?: THREE.Vector3;
+
+  /** Applies name, colour, visibility and stale state to a measurement's drawing. */
+  private style(m: Measurement) {
+    m.group.visible = !m.hidden;
+    m.group.traverse((o: any) => { if (o.material && o.material.color) o.material.color.set(m.stale ? '#e2a336' : m.color); });
+    const label = m.group.children.find((c: any) => c.isCSS2DObject) as CSS2DObject | undefined;
+    if (label) {
+      label.element.innerHTML = `<span class="ml-id">${escapeHtml(m.name)}</span> ${m.kind === 'circle' ? '⌀ ' : ''}${this.format(m.distance)}${m.stale ? ' <span class="ml-stale" title="Measured before the model was edited">⚠</span>' : ''}`;
+      label.element.style.borderColor = m.color;
+    }
+    this.viewer.requestRender();
+  }
+  rename(id: number, name: string) { const m = this.list.find((x) => x.id === id); if (m) { m.name = name.trim() || `#${id}`; this.style(m); this.emit(); } }
+  setHidden(id: number, hidden: boolean) { const m = this.list.find((x) => x.id === id); if (m) { m.hidden = hidden; this.style(m); this.emit(); } }
+  setColor(id: number, color: string) { const m = this.list.find((x) => x.id === id); if (m) { m.color = color; this.style(m); this.emit(); } }
+  /** Called after any geometry edit: existing values may no longer be current (OV-102). */
+  markStale() { let any = false; for (const m of this.list) if (!m.stale) { m.stale = true; any = true; this.style(m); } if (any) this.emit(); }
+  /** Measures again between the same points (the user confirms the value is current). */
+  refresh(id: number) { const m = this.list.find((x) => x.id === id); if (m) { m.stale = false; this.style(m); this.emit(); } }
+
+  serialize(): SavedMeasurement[] {
+    return this.list.map((m) => ({ name: m.name, kind: m.kind, a: m.a.toArray(), b: m.b.toArray(), c: m.kind === 'circle' ? (m.group.userData.b2 as number[]) : undefined, na: m.na?.toArray() ?? null, nb: m.nb?.toArray() ?? null, color: m.color, hidden: m.hidden, stale: m.stale }));
+  }
+  restore(list: SavedMeasurement[]) {
+    this.clear();
+    const V = (a?: number[] | null) => (a ? new THREE.Vector3().fromArray(a) : null);
+    for (const s of list) {
+      const preset = { name: s.name, color: s.color, hidden: s.hidden, stale: s.stale };
+      if (s.kind === 'circle' && s.c) {
+        this.circlePreset = preset;
+        for (const p of [s.a, s.c, s.b]) this.addCirclePoint(V(p)!);
+      } else {
+        const marker = this.makeMarker(0xffffff); this.viewer.overlay.add(marker); this.markers.add(marker);
+        this.finish({ p: V(s.a)!, n: V(s.na), marker }, { p: V(s.b)!, n: V(s.nb) }, preset);
+      }
+    }
+  }
+  /** JSON for download (OV-102). */
+  toJSON(formatUnit: (v: number) => string) {
+    return this.list.map((m) => ({ name: m.name, type: m.kind, value: formatUnit(m.distance), current: !m.stale, from: m.a.toArray(), to: m.b.toArray(), angleBetweenFaces: m.angle }));
   }
 
   get pendingCount() { return this.mode === 'circle' ? this.circlePts.length : this.pending ? 1 : 0; }
@@ -236,10 +333,7 @@ export class MeasureTool {
 
   /** Re-renders labels after the unit changes. */
   relabel() {
-    for (const m of this.list) {
-      const label = m.group.children.find((c: any) => c.isCSS2DObject) as CSS2DObject | undefined;
-      if (label) label.element.innerHTML = `<span class="ml-id">#${m.id}</span> ${m.kind === 'circle' ? '⌀ ' : ''}${this.format(m.distance)}`;
-    }
+    for (const m of this.list) this.style(m);
     this.emit();
   }
 }

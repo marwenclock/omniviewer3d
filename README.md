@@ -4,7 +4,7 @@
 
 **Live site:** https://omniviewer3d.com/
 
-> Completely free and ad-free. To support hosting and development, donations are welcome (coming soon).
+> Completely free and ad-free, with no automatic telemetry. Product principles: [CONTRIBUTING.md](CONTRIBUTING.md#product-principles).
 
 ---
 
@@ -21,18 +21,28 @@
 
 | Export |
 | --- |
-| GLB, glTF, STL (binary / ASCII), OBJ, PLY, USDZ, 3MF (with units and colours), section outlines as SVG / DXF, PNG screenshots, MP4 / WebM / GIF turntables |
+| GLB, glTF, STL (binary / ASCII), OBJ, OBJ + MTL + textures (zip), PLY, USDZ, 3MF (with units and colours), section outlines as SVG / DXF, PNG screenshots at any size, MP4 / WebM / GIF turntables, HTML reports, SVG drawings, `.omniproj` projects |
+
+Every export shows a preflight report first: what is included (visible parts or everything), the output unit and up axis, and what the format cannot keep. glTF, GLB and USDZ are written in metres with Y up; STL defaults to millimetres and can be turned Z-up for slicers; 3MF declares its unit.
 
 Drop or paste a model together with its textures, `.mtl` or `.bin` files, a whole folder, or a `.zip`. Batch convert many files into one ZIP.
 
 ## Features
 
+**Workspace**
+- Workspaces for View, Inspect, Prepare and Present; the toolbar adapts to the window and folds extra tools into a labelled Tools menu
+- Model bar with tabs for several models, file format, unit and an unsaved-changes marker
+- Controls that cannot work for the current file stay visible and say why
+- Units with provenance (declared by the file, remembered, format default, guessed or chosen), separate display units
+- Problems panel, help centre, release notes and a bug report you can read before sending
+
 **Viewing**
-- Orbit / pan / zoom, 7 camera views, perspective or orthographic, clickable axis gizmo, saved camera views (also in share links)
+- Orbit / pan / zoom (default, CAD or Blender-style navigation, zoom to cursor), keyboard camera, 7 camera views, perspective or orthographic, clickable axis gizmo, saved camera views (also in share links)
 - Shaded, flat, wireframe, X-ray, edges, grid, axes, auto-rotate, dimension arrows
 - Inspect: surface normals, face orientation (flipped faces), clay matcap, UV checker, vertex colours
 - Lighting: studio, soft, sunset, overcast, night, flat; gradient backdrops; ground shadow
-- Section plane with solid cut faces; explode assemblies; compare two models (overlay or side by side)
+- Section plane with solid cut faces; explode assemblies; compare two models (overlay, side by side, wipe slider, deviation heatmap)
+- Point-cloud size and budget controls, IFC storeys and properties, animation player
 - Scene tree, animations, light/dark theme, phone layout with a bottom toolbar
 
 **Print & fix**
@@ -40,6 +50,7 @@ Drop or paste a model together with its textures, `.mtl` or `.bin` files, a whol
 - Reduce polygons (meshoptimizer), hollow with a wall thickness, wall-thickness heatmap
 - Cut / split into closed halves; place a face on the floor; Z-up export for slicers
 - Print estimate: weight, filament length, resin volume and cost by material, infill, walls and copies
+- Printer bed fit with presets, overhang map, clash and clearance check, G-code layer preview, drain holes for hollow prints
 - Size details: dimensions, area, volume, watertight check; smart unit guess (remembered per file type), unit conversion, exact resize
 
 **Measure, paint, edit**
@@ -49,8 +60,16 @@ Drop or paste a model together with its textures, `.mtl` or `.bin` files, a whol
 - 3D text (bundled Geist fonts), SVG logo extrusion, boolean combine / subtract / intersect
 - Undo / redo for everything
 
+**Share & document**
+- Screenshot dialog with sizes, presets and transparent background; batch product shots
+- Embed builder (interface level, spin, background, credit) and share links with the camera
+- Printable model report and a dimensioned three-view drawing (first or third angle)
+- Save a project (`.omniproj`) and continue later; watch a file and reload when you save it (Chrome / Edge); View in AR on iPhone
+
 **Ease of use**
-- Command palette (Ctrl+K or /) over every tool, right-click menu, paste to open, first-visit tips
+- Command palette (Ctrl+K or /) over every tool, right-click menu, paste to open, first-visit tips, recipes
+- Interface in English, Spanish, German, French and Portuguese
+- Keyboard reachable, screen-reader labels, reduced motion, density setting, single-key shortcuts can be limited or turned off
 - Recent files (kept only in your browser), loading progress with cancel
 - Installable app that works offline after the first visit
 
@@ -71,7 +90,7 @@ Set the public address with `SITE_URL` in [`scripts/seo.mjs`](scripts/seo.mjs) o
 https://omniviewer3d.com/#model=https://example.com/model.glb
 ```
 
-Several files (e.g. OBJ + MTL + textures) are separated with commas. Add `&embed=1` for an embeddable, chrome-free view:
+Several files (e.g. OBJ + MTL + textures) are separated with commas. Add `&embed=1` for an embeddable view. Options: `ui=min` or `ui=none` (less interface), `spin=1`, `bg=203040` (hex background), `credit=0`. The Share dialog builds the snippet for you:
 
 ```html
 <iframe src="https://omniviewer3d.com/#model=https://example.com/model.glb&embed=1" width="640" height="480" style="border:0" allowfullscreen></iframe>
@@ -88,10 +107,17 @@ The server hosting the file must allow cross-origin downloads (GitHub raw links,
 | Camera views | 1 – 7 |
 | Measure / Paint / Section | M / P / X |
 | Move / Rotate / Scale | W / E / R |
-| Hide selected | H |
+| Hide / show selected | H |
 | Delete / Duplicate | Del / Ctrl+D |
+| Group / Ungroup | Ctrl+G / Ctrl+Shift+G |
 | Undo / Redo | Ctrl+Z / Ctrl+Y |
+| Export / Save project | Ctrl+E / Ctrl+S |
+| Search every tool | Ctrl+K or / |
+| Focus mode (hide panels) | `\` |
+| Orbit, pan / zoom the camera | Arrows, Shift+arrows / + − (3D view focused) |
 | Cancel tool, deselect | Esc |
+
+Single-letter shortcuts can be limited to the 3D view or turned off in Settings.
 
 ## Run locally
 
@@ -100,11 +126,12 @@ git clone https://github.com/marwenclock/omniviewer3d.git
 cd omniviewer3d
 npm install
 npm run dev
+npm test        # export-contract tests
 ```
 
 `npm run build` creates a static site in `dist/` that can be hosted anywhere (GitHub Pages, Cloudflare Pages, Netlify, any web server). Pushing to `main` deploys to omniviewer3d.com (Cloudflare) via `.github/workflows/deploy.yml`; `npm run deploy` deploys from your machine.
 
-To switch on donations, set `donateUrl` in [`src/config.ts`](src/config.ts).
+Before release, work through [`docs/device-test-matrix.md`](docs/device-test-matrix.md); the plan for what comes next is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Built with
 
@@ -114,4 +141,4 @@ Inspired by the excellent [Online 3D Viewer](https://3dviewer.net). OMNIVIEWER i
 
 ## Licence
 
-MIT © BANKASI MEDIA. See [LICENSE](LICENSE). Third-party libraries keep their own licences (occt-import-js and OpenCascade are LGPL-2.1, web-ifc is MPL-2.0, rhino3dm and three.js are MIT); they are loaded unmodified.
+MIT © BANKASI MEDIA. See [LICENSE](LICENSE). The Geist fonts in `src/fonts/` are under the SIL Open Font License (see `src/fonts/OFL.txt`). Third-party libraries keep their own licences (occt-import-js and OpenCascade are LGPL-2.1, web-ifc is MPL-2.0, rhino3dm and three.js are MIT); they are loaded unmodified.

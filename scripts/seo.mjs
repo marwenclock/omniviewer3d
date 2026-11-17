@@ -17,12 +17,46 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const strip = (s) => String(s).replace(/<[^>]+>/g, '');
 const extList = (f, key) => [key, ...f.alt].map((e) => '.' + e).join(', ');
 
+// Supportable promises only (audit OV-079): what we can stand behind, with the limits stated.
 const COMMON_FAQ = [
-  ['Is OMNIVIEWER free?', 'Yes. It is completely free, open source and has no ads, accounts or limits. Donations help pay for hosting and development.'],
-  ['Are my files uploaded?', 'No. Files are opened and converted inside your browser and never leave your device, so confidential models stay private.'],
-  ['Does it work on Mac, Windows, Linux and phones?', 'Yes. It runs in any modern browser (Chrome, Edge, Firefox, Safari) on desktop, tablet and phone. Nothing to install.'],
-  ['Is there a file size limit?', 'There is no fixed limit. Files of several hundred megabytes usually work; the practical limit is your device\'s memory.'],
+  ['Is OMNIVIEWER free?', 'Yes. It is free and open source, with no ads and no account. Donations help pay for hosting and development.'],
+  ['Are my files uploaded?', 'No. Files are opened and converted inside your browser and are not uploaded to a server. If you turn recent files on, a copy stays in this browser so you can reopen it; you can turn that off.'],
+  ['Does it work on Mac, Windows, Linux and phones?', 'It runs in current Chrome, Edge, Firefox and Safari on desktop, tablet and phone, with nothing to install. It needs WebGL (3D graphics) to be available.'],
+  ['Is there a file size limit?', 'There is no fixed limit. Large files depend on your device\'s memory; phones handle less than computers.'],
 ];
+
+/** Formats without a triangle surface get honest copy (OV-028, OV-073). */
+const NO_MESH = { splat: 'splat', pcd: 'points', xyz: 'points', gcode: 'toolpath' };
+const LIMIT_TEXT = {
+  en: { splat: 'Gaussian splats are a cloud of soft points, not a surface: you can view, frame and screenshot them, but measuring and converting to mesh formats are not available.', points: 'Point clouds have no surface, so repair, volume and STL export do not apply. You can view them, change point size and colour, and measure between points.', toolpath: 'G-code is a printer toolpath made of lines, not a solid: step through it layer by layer, but mesh tools and mesh export do not apply.' },
+  es: { splat: 'Los splats gaussianos son una nube de puntos suaves, no una superficie: puedes verlos y hacer capturas, pero no medirlos ni convertirlos a mallas.', points: 'Las nubes de puntos no tienen superficie: la reparación, el volumen y la exportación a STL no se aplican. Puedes verlas y medir entre puntos.', toolpath: 'El G-code es una trayectoria de impresora hecha de líneas, no un sólido: recórrela capa a capa; las herramientas de malla no se aplican.' },
+  de: { splat: 'Gaussian Splats sind eine Wolke weicher Punkte, keine Oberfläche: ansehen und Bilder speichern geht, Messen und Umwandeln in Netze nicht.', points: 'Punktwolken haben keine Oberfläche: Reparatur, Volumen und STL-Export gelten nicht. Ansehen und zwischen Punkten messen geht.', toolpath: 'G-Code ist ein Druckerpfad aus Linien, kein Körper: Schicht für Schicht ansehen; Netzwerkzeuge gelten nicht.' },
+  fr: { splat: 'Les splats gaussiens sont un nuage de points flous, pas une surface : vous pouvez les voir et les capturer, mais pas les mesurer ni les convertir en maillage.', points: 'Les nuages de points n’ont pas de surface : réparation, volume et export STL ne s’appliquent pas. Vous pouvez les voir et mesurer entre des points.', toolpath: 'Le G-code est un parcours d’imprimante fait de lignes, pas un solide : parcourez-le couche par couche ; les outils de maillage ne s’appliquent pas.' },
+  pt: { splat: 'Splats gaussianos são uma nuvem de pontos suaves, não uma superfície: dá para ver e capturar, mas não medir nem converter em malha.', points: 'Nuvens de pontos não têm superfície: reparo, volume e exportação STL não se aplicam. Dá para ver e medir entre pontos.', toolpath: 'G-code é um caminho de impressora feito de linhas, não um sólido: veja camada por camada; ferramentas de malha não se aplicam.' },
+};
+/** What to know before opening each format (OV-076): companion files, units, exactness. */
+const FORMAT_NOTES = {
+  obj: ['Open the .obj together with its .mtl file and texture images (or drop the folder or a ZIP).', 'OBJ stores no units: check the size after opening.'],
+  gltf: ['A .gltf usually needs its .bin file and images: drop them together, or convert to a self-contained GLB.'],
+  glb: ['GLB is defined in metres, so its real size is known.'],
+  fbx: ['Textures are often separate image files: include them.', 'Animation clips can be played and exported to GLB.'],
+  dae: ['COLLADA files often reference separate textures: include them.'],
+  '3ds': ['Textures are separate image files: include them.'],
+  lwo: ['Textures are separate image files: include them.'],
+  stl: ['STL stores no units. Most STL files are in millimetres; OMNIVIEWER checks whether the size looks plausible.'],
+  ply: ['PLY can hold a mesh or a point cloud; OMNIVIEWER detects which one from the content.', 'PLY stores no units.'],
+  step: ['STEP models are shown as a triangle mesh (tessellated). Measurements are close approximations of the exact CAD surfaces, and the model is not editable as CAD.'],
+  iges: ['IGES files can contain open surfaces, which are not solids for printing. They are shown as a triangle mesh.'],
+  brep: ['BREP models are shown as a triangle mesh; they are not editable as CAD here.'],
+  '3dm': ['Rhino files keep their declared units. Curves and surfaces are shown through their render meshes.'],
+  ifc: ['Elements are grouped by storey and type, with their properties. Mesh exports do not keep IFC properties.'],
+  '3mf': ['3MF declares its unit, so the real size is known.'],
+  off: ['OFF stores no units. Polygon faces are triangulated, including concave ones.'],
+  usdz: ['Common USD files open; advanced USD features may not be shown.'],
+  kmz: ['The 3D model inside the KMZ is shown, not the map location.'],
+  vtk: ['Polygon and point data open; scientific fields (scalars, vectors) are not visualised.'],
+  md2: ['Keyframe animation plays in the viewer.'],
+};
 
 const toolTr = (lang, slug) => {
   if (lang === 'en') return null;
@@ -53,23 +87,38 @@ function buildPages(lang) {
   for (const [key, f] of Object.entries(FORMATS)) {
     const exts = extList(f, key);
     const related = CONVERSIONS.filter(([a]) => a === key).map(([a, b]) => ({ href: `${a}-to-${b}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` }));
+    const nm = NO_MESH[key];
     add(L ? {
       slug: `${key}-viewer`, kind: 'viewer', key,
-      title: L.viewer.title(f.name, exts), desc: L.viewer.desc(f.name, exts), h1: L.viewer.h1(esc(f.name)), lede: L.viewer.lede(exts),
+      title: L.viewer.title(f.name, exts), desc: L.viewer.desc(f.name, exts), h1: L.viewer.h1(esc(f.name)), lede: nm ? LIMIT_TEXT[lang][nm] : L.viewer.lede(exts),
       config: { kind: 'viewer', from: key },
-      copy: [[L.viewer.what(f.name), [L.formats[key] || f.about]], [L.viewer.how(f.name), null, L.viewer.steps(exts)]],
+      copy: [[L.viewer.what(f.name), [L.formats[key] || f.about, ...(nm ? [LIMIT_TEXT[lang][nm]] : [])]], [L.viewer.how(f.name), null, L.viewer.steps(exts)]],
       related, faq: [...L.viewer.faq(f.name, exts), ...L.common],
+    } : nm ? {
+      slug: `${key}-viewer`, kind: 'viewer', key,
+      title: `${f.name} Viewer Online · Free, No Upload · Open ${exts} Files`,
+      desc: `Free online ${f.name} viewer. Open ${exts} files in your browser, processed on your device. No install, no ads.`,
+      h1: `Free online <span class="glow">${esc(f.name)} viewer</span>.`,
+      lede: `Open ${exts} files in your browser. ${LIMIT_TEXT.en[nm]}`,
+      config: { kind: 'viewer', from: key },
+      copy: [
+        [`What is a ${f.name} file?`, [f.about, `It is used by ${f.users}.`]],
+        [`What you can do with ${f.name} files here`, [LIMIT_TEXT.en[nm]], f.tips, 'ul'],
+        [`How to open a ${f.name} file online`, null, [`Click <b>Open</b> above, or drag your ${exts} file anywhere onto this page.`, 'Orbit with the left mouse button, pan with the right button and zoom with the wheel (or pinch on a phone).']],
+      ],
+      related,
+      faq: [[`How do I open a ${f.name} file without software?`, `Open this page and drop the file in. ${APP} reads ${exts} files directly in the browser.`], ...COMMON_FAQ],
     } : {
       slug: `${key}-viewer`, kind: 'viewer', key,
       title: `${f.name} Viewer Online · Free, No Upload · Open ${exts} Files`,
       desc: `Free online ${f.name} viewer. Open ${exts} files in your browser, measure, section, scale, paint and convert them to STL, OBJ or GLB. No upload, no install, no ads.`,
       h1: `Free online <span class="glow">${esc(f.name)} viewer</span>.`,
-      lede: `Open ${exts} files instantly in your browser. Measure, section, scale and convert them. Your file never leaves your device.`,
+      lede: `Open ${exts} files in your browser to measure, section, scale and convert them. Processed on your device, never uploaded.`,
       config: { kind: 'viewer', from: key },
       copy: [
         [`What is a ${f.name} file?`, [f.about, `It is used by ${f.users}.`]],
-        [`How to open a ${f.name} file online`, null, [`Click <b>Drop files or browse</b> above, or drag your ${exts} file anywhere onto this page.`, 'Orbit with the left mouse button, pan with the right button and zoom with the wheel (or pinch on a phone).', 'Use Measure, Section, Paint, Scale, Repair or the editor from the toolbar.', 'Click Export to save it as STL, OBJ, GLB, glTF, PLY, USDZ or 3MF.']],
-        [`Tips for ${f.name} files`, null, f.tips, 'ul'],
+        [`How to open a ${f.name} file online`, null, [`Click <b>Open</b> above, or drag your ${exts} file anywhere onto this page.`, 'Orbit with the left mouse button, pan with the right button and zoom with the wheel (or pinch on a phone).', 'Use Measure, Section, Paint, Scale, Repair or the editor from the toolbar.', 'Click Export, check what the chosen format keeps, and download it as STL, 3MF, OBJ, GLB, glTF, PLY or USDZ.']],
+        [`Tips for ${f.name} files`, null, [...(FORMAT_NOTES[key] || []), ...f.tips], 'ul'],
       ],
       related,
       faq: [
@@ -96,16 +145,17 @@ function buildPages(lang) {
       title: `Convert ${f.name} to ${t.name} Online · Free ${f.name} to ${t.name} Converter`,
       desc: `Convert ${f.name} (${extList(f, from)}) to ${t.name} free in your browser. No upload, no sign-up, no ads. Preview, scale and fix the model before you download.`,
       h1: `Convert <span class="glow">${esc(f.name)} to ${esc(t.name)}</span>.`,
-      lede: `Drop a ${f.name} file and download it as ${t.name} in seconds. Conversion happens on your device, so your file is never uploaded.`,
+      lede: `Drop a ${f.name} file and download it as ${t.name}, with the real size kept. Conversion happens on your device, so your file is not uploaded.`,
       config: { kind: 'convert', from, to: t.id },
       copy: [
-        [`How to convert ${f.name} to ${t.name}`, null, [`Click <b>Drop files or browse</b> above, or drag your ${f.name} file onto this page.`, 'Check the preview. Optionally scale it, change units, repair it or remove parts.', `The export window opens with <b>${t.name}</b> selected: click it to download your file.`]],
-        [`About ${f.name} and ${t.name}`, [f.about, t.note]],
+        [`How to convert ${f.name} to ${t.name}`, null, [`Click <b>Open</b> above, or drag your ${f.name} file onto this page.`, 'Check the preview and the size. Optionally confirm units, repair it or hide parts you don\'t want.', `The export window opens with <b>${t.name}</b> selected and shows what is kept and lost, the real size and the orientation. Click Download.`]],
+        [`About ${f.name} and ${t.name}`, [f.about, t.note, ...(FORMAT_NOTES[from] || [])]],
       ],
       related,
       faq: [
-        [`Is this ${f.name} to ${t.name} converter free?`, 'Yes, completely free with no limits, watermarks or sign-up.'],
-        [`Will my ${f.name} file be uploaded?`, 'No. The conversion runs in your browser and the file never leaves your device.'],
+        [`Is this ${f.name} to ${t.name} converter free?`, 'Yes, free with no watermarks or sign-up.'],
+        [`Will my ${f.name} file be uploaded?`, 'No. The conversion runs in your browser; the file is not sent to a server.'],
+        [`Will the size be correct in ${t.name}?`, t.id === 'glb' || t.id === 'gltf' || t.id === 'usdz' ? `Yes. ${t.name} is defined in metres, so the model is converted from its own unit. Check the unit shown after opening, especially for formats without units such as STL.` : t.id === '3mf' ? '3MF declares its unit, so slicers read the real size.' : `${t.name} files store no units; the numbers are written in millimetres by default, which slicers expect. You can choose another unit in the export window.`],
         ['Can I convert several files at once?', 'Yes: use the batch converter in the Tools menu to convert many files into one ZIP.'],
         COMMON_FAQ[2],
       ],
@@ -167,10 +217,13 @@ function renderSeo(page) {
   }).join('\n');
   const related = page.related?.length ? `<h2>${L ? L.ui.related : 'Related'}</h2><div class="link-cloud">${page.related.map((r) => `<a href="${pre}${r.href}">${esc(r.label)}</a>`).join('')}</div>` : '';
   const faq = page.faq?.length ? `<h2>${L ? L.ui.faq : 'Frequently asked questions'}</h2>${page.faq.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}` : '';
+  // Task help first, related next; the full tool directory comes last and folded (OV-045).
   return `<section class="seo">
-  ${toolsGrid(page.lang)}
   <article class="seo-copy">${copy}${related}${faq}</article>
+  <details class="seo-dir"><summary>${L ? L.ui.viewers + ' · ' + L.ui.converters : 'All tools, viewers and converters'}</summary>
+  ${toolsGrid(page.lang)}
   ${linkDirectory(page)}
+  </details>
 </section>`;
 }
 
@@ -199,7 +252,7 @@ function jsonLd(page) {
 
 const UI_STRINGS = (L) => [
   ['<span class="card-label">[open]</span>', `<span class="card-label">${L.ui.open}</span>`],
-  ['<span class="card-title">Drop files or browse</span>', `<span class="card-title">${L.ui.drop}</span>`],
+  ['<span class="dz-title" id="dzTitle">Drop a model, folder or ZIP</span>', `<span class="dz-title" id="dzTitle">${L.ui.drop}</span>`],
   ['<span class="card-label">From link</span>', `<span class="card-label">${L.ui.fromLink}</span>`],
   ['<span class="card-title">Open a model URL</span>', `<span class="card-title">${L.ui.openUrl}</span>`],
   ['<span class="card-label">Build</span>', `<span class="card-label">${L.ui.build}</span>`],
@@ -238,6 +291,8 @@ export function renderPage(html, page) {
   rep(/<!--seo-->[\s\S]*?<!--\/seo-->/, `<!--seo-->${renderSeo(page)}<!--/seo-->`);
   rep(/<script id="page-config" type="application\/json">[\s\S]*?<\/script>/, `<script id="page-config" type="application/json">${JSON.stringify({ ...page.config, lang: page.lang })}</script>`);
   if (L) for (const [a, b] of UI_STRINGS(L)) html = html.replace(a, b);
+  // The brand link goes to the home page in the same language (OV-075).
+  if (L) html = html.replace('<a class="brand-home" href="./"', `<a class="brand-home" href="${prefix(page.lang)}"`);
   const depth = (page.lang === 'en' ? 0 : 1) + (page.slug ? 1 : 0);
   if (depth) html = html.replace(/<head>/, `<head>\n    <base href="${'../'.repeat(depth)}" />`);
   return html;
