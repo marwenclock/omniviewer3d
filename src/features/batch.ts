@@ -1,7 +1,7 @@
 import { zipSync } from 'fflate';
 import { ctx, escHtml } from '../context';
 import { registerCommand } from '../registry';
-import { loadFiles, MODEL_EXTS, extOf, ACCEPT } from '../loaders';
+import { loadFiles, MODEL_EXTS, extOf, pickerAccept } from '../loaders';
 import { EXPORT_FORMATS, exportModel, download, type ExportId } from '../exporters';
 import { disposeObject } from '../viewer';
 
@@ -15,7 +15,7 @@ export function showBatchDialog() {
     <div class="row"><label>Convert to</label><select id="batchTarget">${EXPORT_FORMATS.map((f) => `<option value="${f.id}" ${f.id === 'stl' ? 'selected' : ''}>${f.label}</option>`).join('')}</select></div>
     <div class="modal-actions"><button class="btn-outline" data-modal-close>Cancel</button><button class="btn-solid" id="batchGo" disabled>Convert</button></div>`);
   const input = document.createElement('input');
-  input.type = 'file'; input.multiple = true; input.accept = ACCEPT;
+  input.type = 'file'; input.multiple = true; input.accept = pickerAccept();
   const list = document.getElementById('batchList')!;
   const go = document.getElementById('batchGo') as HTMLButtonElement;
   const render = () => {

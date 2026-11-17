@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ctx, escHtml } from '../context';
 import { registerPanel, registerCommand } from '../registry';
-import { loadFiles, ACCEPT } from '../loaders';
+import { loadFiles, pickerAccept } from '../loaders';
 import { disposeObject } from '../viewer';
 import { computeStats, fmtInt, fmtNum, UNITS } from '../stats';
 
@@ -97,7 +97,7 @@ registerPanel({
   bind(host) {
     host.querySelectorAll('[data-cmpopen]').forEach((b) => b.addEventListener('click', () => {
       const input = document.createElement('input');
-      input.type = 'file'; input.multiple = true; input.accept = ACCEPT;
+      input.type = 'file'; input.multiple = true; input.accept = pickerAccept();
       input.onchange = () => input.files?.length && openOther([...input.files]);
       input.click();
     }));

@@ -1,7 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { Viewer, type ViewName, type DisplayMode, type Axis } from './viewer';
-import { loadFiles, filesFromUrls, ACCEPT, FORMATS, setSharedRenderer, extOf } from './loaders';
+import { loadFiles, filesFromUrls, pickerAccept, FORMATS, setSharedRenderer, extOf } from './loaders';
 import { History } from './history';
 import { Editor, type Primitive, type GizmoMode } from './editor';
 import { MeasureTool } from './tools/measure';
@@ -91,7 +91,7 @@ let PAGE: PageConfig = {};
 try { PAGE = JSON.parse($('#page-config')?.textContent || '{}'); } catch { /* defaults */ }
 ($('#repoLink') as HTMLAnchorElement).href = CONFIG.repoUrl;
 $('#year').textContent = String(new Date().getFullYear());
-($('#fileInput') as HTMLInputElement).accept = ACCEPT;
+($('#fileInput') as HTMLInputElement).accept = pickerAccept();
 $('#formatList').innerHTML = FORMATS.map((f) => f.ext[0] === 'zip'
   ? `<span class="fmt" title="${esc(f.name)}">.zip</span>`
   : `<a class="fmt" href="${f.ext[0]}-viewer/" title="${esc(f.name)} viewer">${f.ext.map((e) => '.' + e).join(' ')}</a>`).join('');

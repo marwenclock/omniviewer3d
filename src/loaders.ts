@@ -47,6 +47,17 @@ export const ACCEPT = FORMATS.flatMap((f) => f.ext).map((e) => '.' + e).join(','
   ',.mtl,.bin,.png,.jpg,.jpeg,.webp,.bmp,.tga,.gif,.ktx2,.dds,.tif,.tiff';
 
 export const extOf = (name: string) => name.split('.').pop()!.toLowerCase();
+
+/**
+ * Value for <input type="file" accept>. Phones and tablets (iOS especially) grey out any file whose type the
+ * OS does not recognise, which includes STL, STEP and most 3D formats, so there we allow every file and let the
+ * loader reject anything unsupported.
+ */
+export function pickerAccept(): string {
+  const ua = navigator.userAgent;
+  const iPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return /iPhone|iPad|iPod|Android/i.test(ua) || iPadOS ? '' : ACCEPT;
+}
 const baseName = (p: string) => decodeURIComponent(p.split(/[\\/]/).pop() || p).toLowerCase();
 
 const DEFAULT_COLOR = 0xb4b8bd;
