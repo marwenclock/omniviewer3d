@@ -71,6 +71,30 @@
           <button class="tb" data-tool="paint" data-tip="Paint (P)"><i data-icon="brush"></i><span>Paint</span></button>
           <button class="tb" data-tool="section" data-tip="Section plane (X)"><i data-icon="section"></i></button>
           <button class="tb" data-tool="explode" data-tip="Explode view"><i data-icon="explode"></i></button>
+          <div class="dropdown">
+            <button class="tb" data-menu="tools" data-tip="More tools"><i data-icon="tools"></i><span>Tools</span><i data-icon="chev" class="chev"></i></button>
+            <div class="menu" id="menu-tools">
+              <div class="menu-label">Print &amp; fix</div>
+              <button data-tool="repair"><i data-icon="repair"></i>Repair &amp; check</button>
+              <button data-tool="reduce"><i data-icon="reduce"></i>Reduce polygons</button>
+              <button data-tool="hollow"><i data-icon="hollow"></i>Hollow</button>
+              <button data-tool="thickness"><i data-icon="thickness"></i>Wall thickness</button>
+              <button data-tool="cut"><i data-icon="cut"></i>Cut / split</button>
+              <div class="menu-sep"></div>
+              <div class="menu-label">Build</div>
+              <button data-tool="text"><i data-icon="text"></i>3D text</button>
+              <button data-tool="svg"><i data-icon="logo"></i>SVG logo</button>
+              <button data-tool="boolean"><i data-icon="boolean"></i>Combine / subtract</button>
+              <button data-tool="layflat"><i data-icon="layflat"></i>Place face on floor</button>
+              <div class="menu-sep"></div>
+              <div class="menu-label">More</div>
+              <button data-tool="compare"><i data-icon="compare"></i>Compare models</button>
+              <button data-tool="turntable"><i data-icon="video"></i>Turntable video / GIF</button>
+              <button data-tool="views"><i data-icon="bookmark"></i>Saved views</button>
+              <button data-action="batch"><i data-icon="batch"></i>Batch convert…</button>
+              <button data-action="palette"><i data-icon="search"></i>All commands <kbd>Ctrl K</kbd></button>
+            </div>
+          </div>
         </div>
         <div class="tb-group">
           <button class="tb needs-model" data-gizmo="translate" data-tip="Move (W)"><i data-icon="move"></i></button>
