@@ -16,6 +16,7 @@ import { MATERIALS, estimate } from './cost';
 import { listRecent, addRecent, removeRecent, clearRecent, entryFiles, type RecentEntry } from './recent';
 import { guessUnit, defaultUp, rememberPref } from './units';
 import { initFeatures } from './features';
+import { capsEnabled, setCaps } from './features/caps';
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -670,6 +671,8 @@ function toolSection(): string {
         <div class="row"><label>Axis</label><div class="seg">${(['x', 'y', 'z'] as Axis[]).map((a) => `<button class="${s.axis === a ? 'active' : ''}" data-secaxis="${a}">${a.toUpperCase()}</button>`).join('')}</div></div>
         <div class="row"><label>Position</label><input type="range" min="0" max="1" step="0.001" value="${s.t}" data-secpos /></div>
         <label class="check"><input type="checkbox" data-secflip ${s.flip ? 'checked' : ''}/> Flip side</label>
+        <label class="check"><input type="checkbox" data-seccaps ${capsEnabled ? 'checked' : ''}/> Solid cut faces</label>
+        <div class="btn-row"><button class="chip" data-tool="cut">${icon('cut')}Cut here…</button></div>
       </div>`;
     }
     case 'explode':
@@ -900,6 +903,7 @@ details.addEventListener('change', (e) => {
   if (d.msnap !== undefined) measure.snap = t.checked;
   if (d.secon !== undefined) viewer.setSection({ enabled: t.checked });
   if (d.secflip !== undefined) viewer.setSection({ flip: t.checked });
+  if (d.seccaps !== undefined) setCaps(t.checked);
   if (d.unit !== undefined) { setUnit(t.value as Unit, true); hideUnitHint(); }
   if (d.anim !== undefined) viewer.playClip(Number(t.value));
   if (d.matidx !== undefined) { store.set('matIndex', t.value); renderDetails(); }
