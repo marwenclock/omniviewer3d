@@ -13,54 +13,57 @@
 | Import | |
 | --- | --- |
 | Mesh / scene | glTF, GLB, OBJ (+MTL), FBX, STL, PLY, 3MF, DAE (Collada), 3DS, USD/USDZ/USDA/USDC, OFF, AMF, VRML/WRL, VTK/VTP, LWO, KMZ, VOX, MD2 |
-| CAD | STEP/STP, IGES/IGS, BREP (OpenCascade), 3DM (Rhino) |
+| CAD | STEP/STP, IGES/IGS, BREP (OpenCascade, in a background worker), 3DM (Rhino) |
 | BIM | IFC |
+| Gaussian splats | .splat, .ksplat, .spz, 3DGS .ply (view, measure, screenshot) |
 | Point clouds & toolpaths | PCD, XYZ, PLY point clouds, G-code |
 | Archives | ZIP of any of the above (with textures) |
 
 | Export |
 | --- |
-| GLB, glTF, STL (binary and ASCII), OBJ, PLY, USDZ |
+| GLB, glTF, STL (binary / ASCII), OBJ, PLY, USDZ, 3MF (with units and colours), section outlines as SVG / DXF, PNG screenshots, MP4 / WebM / GIF turntables |
 
-Drop a model together with its textures, `.mtl` or `.bin` files, a whole folder, or a `.zip`.
+Drop or paste a model together with its textures, `.mtl` or `.bin` files, a whole folder, or a `.zip`. Batch convert many files into one ZIP.
 
 ## Features
 
 **Viewing**
-- Orbit / pan / zoom, fit to window, 7 camera views, perspective or orthographic camera, clickable axis gizmo
-- Display modes: shaded, flat, wireframe, X-ray, plus edge overlay, grid, axes and auto-rotate
-- Y-up / Z-up switch (CAD and print files open Z-up automatically)
-- Scene tree with show/hide, isolate and zoom-to-part
-- Animations (glTF, FBX, Collada, MD2)
-- Light and dark interface, custom background and lighting presets
+- Orbit / pan / zoom, 7 camera views, perspective or orthographic, clickable axis gizmo, saved camera views (also in share links)
+- Shaded, flat, wireframe, X-ray, edges, grid, axes, auto-rotate, dimension arrows
+- Inspect: surface normals, face orientation (flipped faces), clay matcap, UV checker, vertex colours
+- Lighting: studio, soft, sunset, overcast, night, flat; gradient backdrops; ground shadow
+- Section plane with solid cut faces; explode assemblies; compare two models (overlay or side by side)
+- Scene tree, animations, light/dark theme, phone layout with a bottom toolbar
 
-**Tools**
-- **Measure** point to point with corner snapping: distance, ΔX/ΔY/ΔZ, angle between faces and gap between parallel faces
-- **Paint** with a brush (saved as vertex colours, kept in GLB/PLY export) or colour whole parts
-- **Section plane** on X/Y/Z with flip
-- **Explode** assemblies
-- **Size details**: width/height/depth, vertices, triangles, materials, textures, surface area, volume and watertight check, in mm, cm, m, inches or feet
-- **Scale**: scale by a factor, set an exact size (with or without keeping proportions), convert units (e.g. inches → mm)
-- Screenshots at 1×, 2× or 4×, optionally with a transparent background
-- Share links and embed code for models opened from a URL
+**Print & fix**
+- Repair & printability check: open edges highlighted, non-manifold, flipped, inside-out, loose pieces; one-click repair
+- Reduce polygons (meshoptimizer), hollow with a wall thickness, wall-thickness heatmap
+- Cut / split into closed halves; place a face on the floor; Z-up export for slicers
+- Print estimate: weight, filament length, resin volume and cost by material, infill, walls and copies
+- Size details: dimensions, area, volume, watertight check; smart unit guess (remembered per file type), unit conversion, exact resize
 
-**Editing (deliberately simple)**
-- Move, rotate and scale with an on-screen gizmo or exact numbers (optional snapping)
-- Add shapes: box, sphere, cylinder, cone, torus, capsule, icosahedron, plane, or start from an empty scene
-- Duplicate, delete, rename, mirror, reset, drop to floor, centre on origin
-- Edit material colour, metalness, roughness and opacity
+**Measure, paint, edit**
+- Measure distances, ΔX/ΔY/ΔZ, face angles, gaps, distance to a face plane, and circles/holes (diameter, radius)
+- Paint with a brush (vertex colours, kept in GLB/PLY) or recolour whole parts
+- Move / rotate / scale with handles or exact numbers, shapes, duplicate, mirror, materials
+- 3D text (bundled Geist fonts), SVG logo extrusion, boolean combine / subtract / intersect
 - Undo / redo for everything
 
-## Tool pages
+**Ease of use**
+- Command palette (Ctrl+K or /) over every tool, right-click menu, paste to open, first-visit tips
+- Recent files (kept only in your browser), loading progress with cancel
+- Installable app that works offline after the first visit
 
-Every format, conversion and tool has its own landing page (generated at build time from [`scripts/seo-data.mjs`](scripts/seo-data.mjs)), for example:
+## Tool pages (SEO)
 
-- Viewers: `/stl-viewer/`, `/step-viewer/`, `/obj-viewer/`, `/ifc-viewer/`, `/3dm-viewer/` … (26)
-- Converters: `/step-to-stl/`, `/obj-to-glb/`, `/fbx-to-glb/`, `/glb-to-usdz/` … (30). The export window opens with the target format ready.
-- Tools: `/convert/`, `/scale/`, `/unit-converter/`, `/measure/`, `/stl-volume-calculator/`, `/paint/`, `/editor/`
+Every format, conversion and tool has its own landing page, generated at build time from [`scripts/seo-data.mjs`](scripts/seo-data.mjs), in English, Spanish, German, Portuguese and French ([`scripts/i18n.mjs`](scripts/i18n.mjs)): 82 pages per language, 410 in total, each with its own title, description, FAQ, structured data, hreflang links and a 1200×630 share image.
 
-Each page has its own title, description, how-to, FAQ and structured data, plus `sitemap.xml` and `robots.txt`.
-Set the public address in `SITE_URL` ([`scripts/seo.mjs`](scripts/seo.mjs)) or as an environment variable when building.
+- Viewers: `/stl-viewer/`, `/step-viewer/`, `/splat-viewer/` … (27)
+- Converters: `/step-to-stl/`, `/obj-to-glb/`, `/stl-to-3mf/` … (34). The export window opens with the target format ready (optionally downloads automatically).
+- Tools: `/repair-stl/`, `/reduce-polygons/`, `/stl-cost-calculator/`, `/split-stl/`, `/3d-text-generator/`, `/svg-to-stl/`, `/3d-model-to-gif/`, `/batch-3d-converter/` … (20)
+- Translations live under `/es/`, `/de/`, `/pt/`, `/fr/`.
+
+Set the public address with `SITE_URL` in [`scripts/seo.mjs`](scripts/seo.mjs) or as an environment variable when building.
 
 ## Open a model from a link
 
@@ -99,13 +102,13 @@ npm install
 npm run dev
 ```
 
-`npm run build` creates a static site in `dist/` that can be hosted anywhere (GitHub Pages, Cloudflare Pages, Netlify, any web server). Pushing to `main` deploys to GitHub Pages automatically via `.github/workflows/deploy.yml`.
+`npm run build` creates a static site in `dist/` that can be hosted anywhere (GitHub Pages, Cloudflare Pages, Netlify, any web server). Pushing to `main` deploys to omniviewer3d.com (Cloudflare) via `.github/workflows/deploy.yml`; `npm run deploy` deploys from your machine.
 
 To switch on donations, set `donateUrl` in [`src/config.ts`](src/config.ts).
 
 ## Built with
 
-[three.js](https://threejs.org) · [occt-import-js](https://github.com/kovacsv/occt-import-js) (OpenCascade, for STEP/IGES/BREP) · [web-ifc](https://github.com/ThatOpen/engine_web-ifc) · [rhino3dm](https://github.com/mcneel/rhino3dm) · [fflate](https://github.com/101arrowz/fflate) · [Vite](https://vite.dev)
+[three.js](https://threejs.org) · [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) · [three-bvh-csg](https://github.com/gkjohnson/three-bvh-csg) · [gaussian-splats-3d](https://github.com/mkkellogg/GaussianSplats3D) · [opentype.js](https://github.com/opentypejs/opentype.js) · [gifenc](https://github.com/mattdesl/gifenc) · [occt-import-js](https://github.com/kovacsv/occt-import-js) (OpenCascade, for STEP/IGES/BREP) · [web-ifc](https://github.com/ThatOpen/engine_web-ifc) · [rhino3dm](https://github.com/mcneel/rhino3dm) · [fflate](https://github.com/101arrowz/fflate) · [Vite](https://vite.dev)
 
 Inspired by the excellent [Online 3D Viewer](https://3dviewer.net). OMNIVIEWER is an independent project with its own code.
 
