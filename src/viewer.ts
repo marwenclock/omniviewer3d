@@ -187,7 +187,7 @@ export class Viewer {
     const planes = this.section.enabled ? [this.clipPlane] : [];
     const edgesWanted = this.showEdges;
     this.model?.traverse((o: any) => {
-      if (o.userData.helper) return;
+      if (o.userData.helper || o.userData.splat || o.userData.proxy) return;
       if (o.isMesh || o.isPoints || o.isLine) {
         const mats: THREE.Material[] = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats as any[]) {
@@ -246,7 +246,7 @@ export class Viewer {
     if (!target) return box;
     target.updateWorldMatrix(true, true);
     target.traverse((o: any) => {
-      if (o.userData.helper || !o.visible) return;
+      if (o.userData.helper || o.userData.splat || !o.visible) return;
       if (o.isMesh || o.isPoints || o.isLine) box.expandByObject(o, false);
     });
     // expandByObject recurses; children counted twice is harmless for a box.

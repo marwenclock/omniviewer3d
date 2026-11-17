@@ -38,6 +38,7 @@ export const FORMATS: FormatInfo[] = [
   { ext: ['pcd'], name: 'Point Cloud Data' },
   { ext: ['xyz'], name: 'XYZ point cloud' },
   { ext: ['gcode', 'gco'], name: 'G-code toolpath' },
+  { ext: ['splat', 'ksplat', 'spz'], name: 'Gaussian splats (also 3DGS .ply)' },
   { ext: ['zip'], name: 'ZIP archive of any of the above' },
 ];
 
@@ -204,7 +205,15 @@ async function loadOne(
       const geo = new STLLoader(manager).parse(await buf());
       return one(meshFromGeometry(geo, name));
     }
+    case 'splat':
+    case 'ksplat':
+    case 'spz': {
+      const { loadSplat } = await import('./splat');
+      return one(await loadSplat(file, ext, onProgress));
+    }
     case 'ply': {
+      const { isSplatPly, loadSplat } = await import('./splat');
+      if (await isSplatPly(file)) return one(await loadSplat(file, 'ply', onProgress));
       const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
       const geo = new PLYLoader(manager).parse(await buf());
       return one(geo.index ? meshFromGeometry(geo, name) : pointsFromGeometry(geo, name));
@@ -229,7 +238,12 @@ async function loadOne(
     case 'wrl':
     case 'vrml': {
       const { VRMLLoader } = await import('three/addons/loaders/VRMLLoader.js');
-      return one(new VRMLLoader(manager).parse(await text(), ''));
+      const scene = new VRMLLoader(manager).parse(await text(), '');
+      // Drop VRML Background sky/ground spheres: they are scenery, not part of the model.
+      const sky: THREE.Object3D[] = [];
+      scene.traverse((o: any) => { if (o.isMesh && o.material?.side === THREE.BackSide && o.material.depthTest === false) sky.push(o); });
+      sky.forEach((o) => o.removeFromParent());
+      return one(scene);
     }
     case 'vtk':
     case 'vtp': {

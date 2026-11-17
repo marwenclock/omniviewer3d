@@ -148,6 +148,11 @@ async function openFiles(files: File[], urls: string[] | null = null) {
     else toast(`Opened ${state.modelName}`);
     applyPageIntent();
     maybeShowTips();
+    if (res.object.userData.splatCount) {
+      // Splats re-sort only after a large camera move; force the first sort once the camera is framed.
+      for (const t of [100, 500]) setTimeout(() => { (viewer.model as any)?.viewer?.runSplatSort?.(true, true); }, t);
+      toast('Gaussian splats: view, measure and screenshot. Editing and converting are not available for splats.');
+    }
   } catch (err: any) {
     if (err?.name === 'AbortError') { toast('Cancelled'); return; }
     console.error(err);
@@ -542,7 +547,7 @@ function renderTree() {
   if (!model) { host.innerHTML = '<div class="empty">No model loaded.</div>'; return; }
   const LIMIT = 400;
   const build = (o: THREE.Object3D): string => {
-    const kids = o.children.filter((c) => !c.userData.helper);
+    const kids = o.userData.splat ? [] : o.children.filter((c) => !c.userData.helper && !c.userData.proxy);
     const open = state.expanded.has(o.uuid);
     const name = o.name || (o as any).type;
     const row = `<div class="node ${editor.selected === o ? 'selected' : ''} ${o.visible ? '' : 'hidden-obj'}" data-uuid="${o.uuid}">

@@ -32,7 +32,7 @@ export const ctx = {} as AppContext;
 export function modelMeshes(root: THREE.Object3D | null, visibleOnly = false): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
   root?.traverse((o: any) => {
-    if (o.isMesh && !o.userData.helper && (!visibleOnly || isVisibleChain(o))) out.push(o);
+    if (o.isMesh && !o.userData.helper && !o.userData.splat && !o.userData.proxy && (!visibleOnly || isVisibleChain(o))) out.push(o);
   });
   return out;
 }

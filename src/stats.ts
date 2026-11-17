@@ -57,7 +57,8 @@ export function computeStats(root: THREE.Object3D | null, box: THREE.Box3): Mode
   const texs = new Set<THREE.Texture>();
   root.updateWorldMatrix(true, true);
   root.traverse((o: any) => {
-    if (o.userData.helper) return;
+    if (o.userData.helper || o.userData.proxy) return;
+    if (o.userData.splat) { if (o.userData.splatCount) s.points += o.userData.splatCount; return; }
     if (o.isPoints) { s.points += o.geometry.attributes.position?.count || 0; return; }
     if (!o.isMesh) return;
     const g: THREE.BufferGeometry = o.geometry;

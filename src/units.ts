@@ -4,7 +4,7 @@ import type { Unit } from './stats';
 
 const Z_UP = new Set(['stl', 'step', 'stp', 'iges', 'igs', 'brep', 'brp', '3mf', 'amf', 'off', 'gcode', 'gco', '3dm', 'ply', 'vox']);
 const MM = new Set(['step', 'stp', 'iges', 'igs', 'brep', 'brp', 'stl', '3mf', 'amf', 'gcode', 'gco', 'obj', 'off', 'ply', '3dm']);
-const METRES = new Set(['glb', 'gltf', 'usdz', 'usd', 'usda', 'usdc', 'ifc', 'fbx', 'dae', 'kmz']);
+const METRES = new Set(['glb', 'gltf', 'usdz', 'usd', 'usda', 'usdc', 'ifc', 'fbx', 'dae', 'kmz', 'splat', 'ksplat', 'spz']);
 
 interface Pref { unit?: Unit; up?: 'y' | 'z' }
 const key = (ext: string) => 'omniview.fmt.' + ext;

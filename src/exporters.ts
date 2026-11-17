@@ -24,6 +24,9 @@ export interface ExportOptions {
 export async function exportModel(viewer: Viewer, id: ExportId, target?: THREE.Object3D, opts: ExportOptions = {}): Promise<Blob> {
   const model = target ?? viewer.model;
   if (!model) throw new Error('Nothing to export');
+  let splat = false;
+  model.traverse((o) => { if (o.userData.splat) splat = true; });
+  if (splat) throw new Error('Gaussian splats can be viewed, measured and screenshotted, but not converted to mesh formats.');
   // Export in the file's own axes (undo the view rotation), or turned Z-up for printing.
   const rot = viewer.world.rotation.clone();
   viewer.world.rotation.set(opts.zUp && viewer.upAxis === 'y' ? Math.PI / 2 : 0, 0, 0);
