@@ -145,6 +145,7 @@
 
     <main class="layout" id="layout">
       <aside class="side left" id="leftPanel">
+        <div class="sheet-handle" aria-label="Resize panel"></div>
         <div class="side-tabs">
           <button class="side-tab active" data-tab="scene">[scene]</button>
           <button class="side-tab" data-tab="materials">[materials]</button>
@@ -203,11 +204,13 @@
         <div class="unit-hint hidden" id="unitHint"></div>
 
         <div class="tool-hint hidden" id="toolHint"></div>
+        <button class="fab-fit" data-action="fit" aria-label="Fit model to screen"><i data-icon="fit"></i></button>
         <button class="panel-toggle left" data-open="left" aria-label="Show scene panel"><i data-icon="list"></i></button>
         <button class="panel-toggle right" data-open="right" aria-label="Show details panel"><i data-icon="info"></i></button>
       </section>
 
       <aside class="side right" id="rightPanel">
+        <div class="sheet-handle" aria-label="Resize panel"></div>
         <div class="side-tabs">
           <button class="side-tab active" data-rtab="details">[details]</button>
           <button class="side-tab" data-rtab="settings">[settings]</button>
@@ -220,7 +223,7 @@
 
     <nav class="mobilebar" id="mobileBar" aria-label="Tools">
       <button data-m="open"><i data-icon="open"></i><span>Open</span></button>
-      <button data-m="fit" class="needs-model"><i data-icon="fit"></i><span>Fit</span></button>
+      <button data-m="scene" class="needs-model"><i data-icon="list"></i><span>Parts</span></button>
       <button data-m="measure" class="needs-model"><i data-icon="ruler"></i><span>Measure</span></button>
       <button data-m="palette"><i data-icon="tools"></i><span>Tools</span></button>
       <button data-m="export" class="needs-model"><i data-icon="download"></i><span>Export</span></button>

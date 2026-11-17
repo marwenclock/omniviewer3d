@@ -257,6 +257,7 @@ function setUnit(u: Unit, remember = false) {
 }
 
 // ------------------------------------------------------------------ tools
+let hintTimer = 0;
 function setTool(t: Tool) {
   if (state.tool === t) t = 'none';
   panels.get(state.tool)?.onDeactivate?.();
@@ -278,8 +279,15 @@ function setTool(t: Tool) {
   const hint = $('#toolHint');
   hint.textContent = hintText;
   hint.classList.toggle('hidden', !hintText);
+  hint.classList.remove('fade');
+  clearTimeout(hintTimer);
+  if (hintText && isPhone()) hintTimer = window.setTimeout(() => hint.classList.add('fade'), 5000);
+  if (isPhone() && t !== 'none') {
+    openSheet('right');
+    document.body.classList.toggle('sheet-min', ['measure', 'paint', 'layflat'].includes(t));
+  }
   viewer.renderer.domElement.style.cursor = t === 'measure' || t === 'paint' ? 'crosshair' : '';
-  if (t !== 'none') document.body.classList.remove('no-right');
+  if (t !== 'none' && !isPhone()) document.body.classList.remove('no-right');
   updateToolbar();
   renderDetails();
 }
@@ -1470,8 +1478,7 @@ $('#mobileBar').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-m]');
   if (!b) return;
   const m = b.dataset.m!;
-  if (m === 'details') document.body.classList.toggle('no-right');
-  else if (m === 'scene') document.body.classList.toggle('no-left');
+  if (m === 'details' || m === 'scene') toggleSheet(m === 'details' ? 'right' : 'left');
   else if (m === 'palette') openPalette();
   else if (m === 'measure' || m === 'paint') setTool(m);
   else runAction(m);
@@ -1489,3 +1496,68 @@ function shareButtons(link: string, text: string, compact = false) {
   ];
   return `<div class="share-row ${compact ? 'compact' : ''}">${compact ? '<span class="note" style="margin:0">Tell a friend:</span>' : ''}${sites.map(([n, href]) => `<a class="chip" href="${href}" target="_blank" rel="noopener">${n}</a>`).join('')}</div>`;
 }
+
+// ------------------------------------------------------------------ phone: bottom sheets
+function isPhone() { return matchMedia('(max-width: 700px)').matches; }
+function syncBar() {
+  $$('#mobileBar [data-m="details"]').forEach((b) => b.classList.toggle('on', !document.body.classList.contains('no-right')));
+  $$('#mobileBar [data-m="scene"]').forEach((b) => b.classList.toggle('on', !document.body.classList.contains('no-left')));
+}
+/** On phones only one sheet is open at a time. */
+function openSheet(side: 'left' | 'right') {
+  if (!isPhone()) { document.body.classList.remove('no-' + side); return; }
+  document.body.classList.remove('no-' + side);
+  document.body.classList.add('no-' + (side === 'left' ? 'right' : 'left'));
+  syncBar();
+}
+function toggleSheet(side: 'left' | 'right') {
+  const open = !document.body.classList.contains('no-' + side);
+  if (open) { document.body.classList.add('no-' + side); document.body.classList.remove('sheet-min'); }
+  else { openSheet(side); document.body.classList.remove('sheet-min'); }
+  syncBar();
+}
+// Handle: tap to shrink/expand, swipe down to close, swipe up to expand.
+$$('.sheet-handle').forEach((h) => {
+  let y0 = 0, moved = false;
+  h.addEventListener('pointerdown', (e) => { y0 = e.clientY; moved = false; h.setPointerCapture(e.pointerId); });
+  h.addEventListener('pointermove', (e) => { if (Math.abs(e.clientY - y0) > 8) moved = true; });
+  h.addEventListener('pointerup', (e) => {
+    const dy = e.clientY - y0;
+    const side = h.closest('.side.left') ? 'left' : 'right';
+    if (!moved) document.body.classList.toggle('sheet-min');
+    else if (dy > 40) {
+      if (document.body.classList.contains('sheet-min')) { document.body.classList.add('no-' + side); document.body.classList.remove('sheet-min'); }
+      else document.body.classList.add('sheet-min');
+    } else if (dy < -40) document.body.classList.remove('sheet-min');
+    syncBar();
+  });
+});
+$$('[data-close]').forEach((b) => b.addEventListener('click', () => { document.body.classList.remove('sheet-min'); setTimeout(syncBar); }));
+// Selecting a part on a phone shows its details in a small sheet.
+editor.onChange(() => { if (isPhone() && editor.selected && document.body.classList.contains('no-right') && document.body.classList.contains('no-left')) { openSheet('right'); document.body.classList.add('sheet-min'); } });
+window.addEventListener('resize', () => { if (!isPhone()) document.body.classList.remove('sheet-min'); syncBar(); });
+syncBar();
+
+// Keep the 3D view above whichever sheet is open (phones), and re-centre the model in the remaining space.
+let lastSheetH = -1;
+function measureSheet() {
+  let h = 0;
+  if (isPhone()) for (const id of ['#leftPanel', '#rightPanel']) {
+    const el = $(id);
+    if (getComputedStyle(el).display !== 'none') h = Math.max(h, el.getBoundingClientRect().height);
+  }
+  h = Math.round(h);
+  if (h === lastSheetH) return;
+  lastSheetH = h;
+  document.documentElement.style.setProperty('--sheet-h', h + 'px');
+  // After the view resizes (0.25 s animation), re-frame the model in the space that is left.
+  clearTimeout(refitTimer);
+  if (isPhone() && viewer.model) refitTimer = window.setTimeout(() => viewer.fit(editor.selected ?? viewer.model), 320);
+}
+let refitTimer = 0;
+const sheetObserver = new ResizeObserver(measureSheet);
+sheetObserver.observe($('#leftPanel'));
+sheetObserver.observe($('#rightPanel'));
+new MutationObserver(measureSheet).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+window.addEventListener('resize', measureSheet);
+measureSheet();

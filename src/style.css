@@ -568,3 +568,130 @@ body:not(.has-model) .side { display: none !important; }
 .share-row.compact { width: 100%; margin: 0 0 6px; }
 .share-row .chip { text-decoration: none; }
 .lang-links a[aria-current="page"] { border-color: var(--ink); color: var(--hi); }
+
+/* ============================================================ PHONE LAYOUT (≤ 700px)
+   Header respects the notch, nothing scrolls sideways, panels are bottom sheets,
+   and every control is at least ~40px tall for thumbs. */
+html, body { max-width: 100%; overflow-x: hidden; }
+.fab-fit { display: none; }
+.sheet-handle { display: none; }
+@media (hover: none) {
+  .node-btn { opacity: 1 !important; }
+  .recent-item .node-btn { opacity: 1; }
+}
+@media (max-width: 700px) {
+  :root { --top: calc(52px + env(safe-area-inset-top)); --bar: calc(58px + env(safe-area-inset-bottom)); }
+  body { height: 100dvh; }
+
+  /* header: below the status bar / notch */
+  .topbar { height: var(--top); padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); gap: 8px; }
+  .brand { gap: 8px; min-width: 0; }
+  .logo-main { font-size: 0.92rem; letter-spacing: 0.14em; }
+  .logo-by { font-size: 0.6rem; }
+  .logo-byword { font-size: 9.5px; }
+  .logo-bankasi { font-size: 10px; letter-spacing: 0.16em; }
+  .logo-sup { font-size: 5.5px; }
+  .brand-sep { height: 18px; }
+  .top-right { margin-left: auto; gap: 2px; }
+  .top-right .tb { min-width: 40px; height: 40px; }
+  body:not(.has-model) .toolbar { flex: 0 1 auto; }
+  body:not(.has-model) .toolbar .tb-group:not(:first-child) { display: none; }
+  body:not(.has-model) .toolbar .tb-group:first-child { border: 0; padding: 0; }
+  body:not(.has-model) .toolbar .tb[data-action='url'], body:not(.has-model) .toolbar .tb[data-action='new'] { display: none; }
+
+  /* bottom bar */
+  .mobilebar { height: var(--bar); padding: 4px max(4px, env(safe-area-inset-left)) env(safe-area-inset-bottom); }
+  .mobilebar button { min-width: 0; font-size: 9.5px; letter-spacing: 0.04em; gap: 4px; padding: 6px 0; }
+  .mobilebar button.on { color: var(--hi); background: var(--surface-2); }
+  .layout { top: var(--top); bottom: var(--bar); }
+  body:not(.has-model) .layout { bottom: 0; }
+  body:not(.has-model) .mobilebar { display: none; }
+
+  /* viewport overlays */
+  .panel-toggle { display: none !important; }
+  .fab-fit {
+    display: inline-flex; position: absolute; left: 12px; top: 12px; z-index: 6; width: 42px; height: 42px; align-items: center; justify-content: center;
+    border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); backdrop-filter: blur(10px); color: var(--ink);
+  }
+  body:not(.has-model) .fab-fit { display: none; }
+  .tool-hint {
+    top: 12px; left: 64px; right: 12px; transform: none; white-space: normal; text-align: left; font-size: 12px; line-height: 1.35;
+    padding: 8px 12px; border-radius: 12px; max-width: none; transition: opacity 0.4s;
+  }
+  .tool-hint.fade { opacity: 0; pointer-events: none; }
+  .unit-hint { top: 64px; left: 12px; right: 12px; transform: none; max-width: none; }
+
+  /* panels → bottom sheets */
+  .side, .side.right {
+    position: fixed; top: auto; left: 0; right: 0; bottom: var(--bar); width: auto !important; max-height: 50dvh; height: auto;
+    border: 0; border-top: 1px solid var(--line-2); border-radius: 18px 18px 0 0; z-index: 26;
+    box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.55); transition: max-height 0.25s ease;
+  }
+  .side, .side.right { background: var(--bg-2); backdrop-filter: none; }
+  /* the 3D view shrinks to the space above an open sheet, so the model stays visible */
+  .viewport { bottom: var(--sheet-h, 0px); transition: bottom 0.25s ease; }
+  body.sheet-min .side { max-height: 112px; }
+  body.sheet-min .side .side-body { overflow: hidden; }
+  .sheet-handle { display: block; flex: none; height: 22px; cursor: grab; touch-action: none; position: relative; }
+  .sheet-handle::after { content: ''; position: absolute; left: 50%; top: 8px; width: 40px; height: 5px; margin-left: -20px; border-radius: 3px; background: var(--line-2); }
+  .side-tabs { padding: 0 12px; }
+  .side-tab { padding: 6px 10px 10px; font-size: 13px; }
+  .side-close { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; }
+  .side-body { padding: 10px 12px calc(14px); }
+
+  /* touch-friendly controls; 16px inputs stop iOS from zooming in */
+  input[type='text'], input[type='number'], input[type='url'], select, textarea { font-size: 16px; height: 40px; }
+  textarea { height: auto; }
+  input[type='color'] { width: 44px; height: 40px; }
+  input[type='range'] { height: 32px; }
+  .chip { height: 36px; padding: 0 12px; font-size: 11.5px; }
+  .seg button { padding: 8px 12px; font-size: 13px; }
+  .btn-solid { height: 44px; padding: 0 18px; }
+  .btn-outline.small { height: 36px; }
+  .check { min-height: 32px; font-size: 14px; }
+  .check input[type='checkbox'] { width: 20px; height: 20px; }
+  .row > label, .field-label { min-width: 78px; font-size: 13px; }
+  .node { height: 40px; font-size: 14px; }
+  .node-btn { width: 34px; height: 34px; }
+  .kv { font-size: 13.5px; }
+  .xyz input { padding: 0 4px; font-size: 15px; }
+  .palette button { width: 32px; height: 32px; }
+
+  /* overlays */
+  .toasts { bottom: auto; top: calc(var(--top) + 64px); width: calc(100% - 24px); }
+  .toast { text-align: center; }
+  .tips { left: 12px; right: 12px; width: auto; bottom: 12px; }
+  .modal { max-width: calc(100vw - 16px); margin: auto auto calc(8px + env(safe-area-inset-bottom)); }
+  .modal-card { padding: 18px 16px; max-height: calc(100dvh - 40px); overflow: auto; border-radius: 18px; }
+  .modal-card h2 { font-size: 20px; padding-right: 36px; }
+  .export-opt { padding: 12px; }
+  .palette-wrap { padding-top: calc(10px + env(safe-area-inset-top)); align-items: flex-start; }
+  .palette-box { width: calc(100vw - 16px); }
+  .pal-list { max-height: 60dvh; }
+  .pal-item { padding: 12px 10px; font-size: 15px; }
+  .pal-item kbd { display: none; }
+  .ctx-menu button { padding: 11px 12px; font-size: 15px; }
+
+  /* start page */
+  .welcome { padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); }
+  .welcome h1 { font-size: clamp(34px, 10vw, 46px); }
+  .lede { font-size: 15px; }
+  .card { min-height: 68px; padding: 14px 60px 14px 16px; }
+  .welcome-inner { min-width: 0; width: 100%; }
+  .examples { flex-direction: column; align-items: stretch; }
+  .examples > div { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; min-width: 0; width: 100%; }
+  .examples > div::-webkit-scrollbar { display: none; }
+  .examples .chip { flex: none; }
+  .tools-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .tool-tile { padding: 12px; }
+  .seo-copy { font-size: 15px; }
+  .free-note { flex-wrap: wrap; }
+  .recent-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 390px) {
+  .logo-main { font-size: 0.82rem; letter-spacing: 0.1em; }
+  .brand { gap: 6px; }
+  .logo-bankasi { font-size: 9px; letter-spacing: 0.12em; }
+  .top-right .tb { min-width: 36px; }
+  .mobilebar button { font-size: 8.5px; }
+}
