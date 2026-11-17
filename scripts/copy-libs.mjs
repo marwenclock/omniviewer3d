@@ -16,6 +16,7 @@ const copies = [
   ['three/examples/jsm/libs/basis/basis_transcoder.wasm', 'basis/basis_transcoder.wasm'],
   ['occt-import-js/dist/occt-import-js.js', 'occt/occt-import-js.js'],
   ['occt-import-js/dist/occt-import-js.wasm', 'occt/occt-import-js.wasm'],
+  ['occt-import-js/dist/occt-import-js-worker.js', 'occt/occt-import-js-worker.js'],
   ['web-ifc/web-ifc.wasm', 'web-ifc/web-ifc.wasm'],
   ['rhino3dm/rhino3dm.js', 'rhino3dm/rhino3dm.js'],
   ['rhino3dm/rhino3dm.wasm', 'rhino3dm/rhino3dm.wasm'],

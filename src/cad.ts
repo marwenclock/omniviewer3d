@@ -21,15 +21,47 @@ function getOcct(): Promise<any> {
   return occtPromise;
 }
 
-export async function loadCAD(buffer: ArrayBuffer, ext: string, name: string, onProgress: (m: string) => void) {
-  const occt = await getOcct();
+/** Tessellation quality for CAD files (Settings → CAD quality). */
+export const CAD_QUALITY = {
+  draft: { label: 'Draft (fastest)', linear: 0.004, angular: 0.9 },
+  normal: { label: 'Normal', linear: 0.001, angular: 0.5 },
+  fine: { label: 'Fine (smooth curves)', linear: 0.0003, angular: 0.2 },
+} as const;
+export type CadQuality = keyof typeof CAD_QUALITY;
+export function cadQuality(): CadQuality {
+  try { const q = localStorage.getItem('omniview.cadQuality') as CadQuality; return q && q in CAD_QUALITY ? q : 'normal'; } catch { return 'normal'; }
+}
+
+/** Runs OpenCascade in a Web Worker so the page stays responsive; falls back to the main thread. */
+function readInWorker(format: string, data: Uint8Array, params: object, signal?: AbortSignal): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let worker: Worker;
+    try { worker = new Worker(libUrl('occt/occt-import-js-worker.js')); } catch (e) { reject(e); return; }
+    const abort = () => { worker.terminate(); reject(new DOMException('Cancelled', 'AbortError')); };
+    signal?.addEventListener('abort', abort, { once: true });
+    worker.onmessage = (ev) => { signal?.removeEventListener('abort', abort); worker.terminate(); resolve(ev.data); };
+    worker.onerror = (ev) => { signal?.removeEventListener('abort', abort); worker.terminate(); reject(new Error(ev.message || 'CAD worker failed')); };
+    worker.postMessage({ format, buffer: data, params }, [data.buffer]);
+  });
+}
+
+export async function loadCAD(buffer: ArrayBuffer, ext: string, name: string, onProgress: (m: string) => void, signal?: AbortSignal) {
   onProgress('Tessellating CAD geometry…');
-  const data = new Uint8Array(buffer);
-  const params = { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.001, angularDeflection: 0.5 };
+  const q = CAD_QUALITY[cadQuality()];
+  const params = { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: q.linear, angularDeflection: q.angular };
+  const format = ext === 'step' || ext === 'stp' ? 'step' : ext === 'iges' || ext === 'igs' ? 'iges' : 'brep';
   let res: any;
-  if (ext === 'step' || ext === 'stp') res = occt.ReadStepFile(data, params);
-  else if (ext === 'iges' || ext === 'igs') res = occt.ReadIgesFile(data, params);
-  else res = occt.ReadBrepFile(data, params);
+  try {
+    res = await readInWorker(format, new Uint8Array(buffer.slice(0)), params, signal);
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
+    console.warn('CAD worker unavailable, using main thread', e);
+    const occt = await getOcct();
+    const data = new Uint8Array(buffer);
+    if (format === 'step') res = occt.ReadStepFile(data, params);
+    else if (format === 'iges') res = occt.ReadIgesFile(data, params);
+    else res = occt.ReadBrepFile(data, params);
+  }
   if (!res?.success) throw new Error('The CAD file could not be read');
 
   const meshes: THREE.Mesh[] = res.meshes.map((m: any, i: number) => {

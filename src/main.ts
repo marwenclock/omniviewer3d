@@ -17,6 +17,8 @@ import { listRecent, addRecent, removeRecent, clearRecent, entryFiles, type Rece
 import { guessUnit, defaultUp, rememberPref } from './units';
 import { initFeatures } from './features';
 import { capsEnabled, setCaps } from './features/caps';
+import { showBatchDialog } from './features/batch';
+import { CAD_QUALITY, cadQuality } from './cad';
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -64,6 +66,7 @@ const state = {
   ext: '',
   lastFiles: null as File[] | null,
   installPrompt: null as any,
+  abort: null as AbortController | null,
   sourceUrls: null as string[] | null,
   stats: null as ModelStats | null,
   expanded: new Set<string>(),
@@ -108,8 +111,11 @@ if (state.bgCustom) viewer.setBackground(state.bgCustom);
 async function openFiles(files: File[], urls: string[] | null = null) {
   if (!files.length) return;
   setLoading('Loading…');
+  const ac = new AbortController();
+  state.abort = ac;
+  $('#loadingCancel').classList.remove('hidden');
   try {
-    const res = await loadFiles(files, (m) => setLoading(m));
+    const res = await loadFiles(files, (m) => setLoading(m), ac.signal);
     setTool('none');
     measure.clear();
     editor.select(null);
@@ -139,21 +145,30 @@ async function openFiles(files: File[], urls: string[] | null = null) {
     else toast(`Opened ${state.modelName}`);
     applyPageIntent();
   } catch (err: any) {
+    if (err?.name === 'AbortError') { toast('Cancelled'); return; }
     console.error(err);
     toast(err?.message || String(err), true);
   } finally {
     setLoading(null);
+    $('#loadingCancel').classList.add('hidden');
+    if (state.abort === ac) state.abort = null;
   }
 }
 
 async function openUrls(urls: string[]) {
-  setLoading('Downloading…');
+  setLoading('Downloading…', 0);
+  const ac = new AbortController();
+  state.abort = ac;
+  $('#loadingCancel').classList.remove('hidden');
   try {
-    const files = await filesFromUrls(urls);
+    const files = await filesFromUrls(urls, (done, total) => setLoading(`Downloading… ${(done / 1048576).toFixed(1)}${total ? ' / ' + (total / 1048576).toFixed(1) : ''} MB`, total ? done / total : null), ac.signal);
+    setLoading('Loading…');
     await openFiles(files, urls);
     if (!document.body.classList.contains('embed')) history_replaceHash(urls);
   } catch (err: any) {
     setLoading(null);
+    $('#loadingCancel').classList.add('hidden');
+    if (err?.name === 'AbortError') { toast('Cancelled'); return; }
     toast(`${err?.message || err}\nThe server may not allow downloads from other sites (CORS).`, true);
   }
 }
@@ -341,6 +356,7 @@ function runAction(a: string) {
     case 'share': showShareDialog(); break;
     case 'support': showSupportDialog(); break;
     case 'help': showHelpDialog(); break;
+    case 'batch': showBatchDialog(); break;
     case 'theme': applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); renderSettings(); break;
   }
 }
@@ -981,6 +997,7 @@ function renderSettings() {
     <div class="section">
       <div class="section-head"><span class="section-title">Interface</span></div>
       <div class="row"><label>Theme</label><div class="seg"><button class="${document.documentElement.dataset.theme === 'dark' ? 'active' : ''}" data-themeset="dark">Dark</button><button class="${document.documentElement.dataset.theme === 'light' ? 'active' : ''}" data-themeset="light">Light</button></div></div>
+      <div class="row"><label>CAD quality</label><select data-cadq>${Object.entries(CAD_QUALITY).map(([k, v]) => `<option value="${k}" ${k === cadQuality() ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
       <div class="row"><label>App</label><button class="chip" data-install>${icon('download')}Install ${CONFIG.appName}</button></div>
       <p class="note">Install it to use ${CONFIG.appName} like a desktop app, also offline. Your files are processed locally in this browser. Nothing is uploaded.</p>
     </div>${supportBox()}`;
@@ -1010,6 +1027,7 @@ settings.addEventListener('change', (e) => {
   const t = e.target as HTMLInputElement;
   const d = t.dataset;
   if (d.dmode) viewer.setDisplayMode(t.value as DisplayMode);
+  if (d.cadq !== undefined) { try { localStorage.setItem('omniview.cadQuality', t.value); } catch { /* private mode */ } toast('CAD quality saved · applies to STEP / IGES / BREP files you open next'); }
   if (d.light) { viewer.setLighting(t.value as any); store.set('light', t.value); }
   if (d.set === 'edges') viewer.setEdges(t.checked);
   if (d.set === 'grid') viewer.setGrid(t.checked);
@@ -1060,6 +1078,7 @@ function showExportDialog(preferred?: ExportId) {
   openModal(`<h2>Export as another format</h2>
     <p>Converts the current scene, including your edits and paint, and downloads it.</p>
     ${sel ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportSel"/> Only the selected part (${esc(sel.name || 'object')})</label>` : ''}
+    ${viewer.upAxis === 'y' ? `<label class="check" style="margin-bottom:6px"><input type="checkbox" id="exportZup" checked/> Stand upright for 3D printing (Z-up) in STL, 3MF and OBJ</label>` : ''}
     <div class="export-grid">${formats.map((f) => `<button class="export-opt ${f.id === preferred ? 'preferred' : ''}" data-export="${f.id}"><div><b>${f.label}</b><small>${f.id === preferred ? 'Click to download · ' : ''}${f.note}</small></div><span class="ext">.${f.ext}</span></button>`).join('')}</div>`);
   $('#modalCard').onclick = async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-export]');
@@ -1067,10 +1086,11 @@ function showExportDialog(preferred?: ExportId) {
     const id = b.dataset.export as ExportId;
     const f = EXPORT_FORMATS.find((x) => x.id === id)!;
     const onlySel = sel && ($('#exportSel') as HTMLInputElement | null)?.checked;
+    const zUp = !!($('#exportZup') as HTMLInputElement | null)?.checked && ['stl', 'stl-ascii', '3mf', 'obj'].includes(id);
     modal.close();
     setLoading(`Exporting ${f.label}…`);
     try {
-      const blob = await exportModel(viewer, id, onlySel ? sel! : undefined);
+      const blob = await exportModel(viewer, id, onlySel ? sel! : undefined, { unit: state.unit, zUp });
       download(blob, `${baseFileName()}${onlySel ? '-' + (sel!.name || 'part').replace(/[^\w\-]+/g, '') : ''}.${f.ext}`);
       toast(`Exported ${f.label}`);
     } catch (err: any) {
@@ -1348,3 +1368,5 @@ function scrollToSection(id: string) {
   });
 }
 function applyIntent(tool: string) { const prev = PAGE.tool; PAGE.tool = tool; const to = PAGE.to; PAGE.to = undefined; applyPageIntent(); PAGE.tool = prev; PAGE.to = to; }
+
+$('#loadingCancel').addEventListener('click', () => { state.abort?.abort(); setLoading(null); $('#loadingCancel').classList.add('hidden'); });

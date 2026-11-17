@@ -79,7 +79,7 @@ type Progress = (msg: string) => void;
  * Loads a set of files (model files plus any companions such as textures and .mtl files)
  * and returns one Object3D containing every model found.
  */
-export async function loadFiles(input: File[], onProgress: Progress = () => {}): Promise<LoadResult> {
+export async function loadFiles(input: File[], onProgress: Progress = () => {}, signal?: AbortSignal): Promise<LoadResult> {
   const files = await expandZips(input);
   const urls = new Map<string, string>();
   for (const f of files) urls.set(f.name.toLowerCase(), URL.createObjectURL(f));
@@ -101,11 +101,13 @@ export async function loadFiles(input: File[], onProgress: Progress = () => {}):
   for (const file of mains) {
     onProgress(`Reading ${file.name}…`);
     try {
-      const { object, clips } = await loadOne(file, files, manager, onProgress);
+      const { object, clips } = await loadOne(file, files, manager, onProgress, signal);
+      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       if (!object.name) object.name = file.name;
       root.add(object);
       animations.push(...clips);
     } catch (err: any) {
+      if (err?.name === 'AbortError') throw err;
       console.error(err);
       warnings.push(`${file.name}: ${err?.message || err}`);
     }
@@ -146,6 +148,7 @@ async function loadOne(
   all: File[],
   manager: THREE.LoadingManager,
   onProgress: Progress,
+  signal?: AbortSignal,
 ): Promise<{ object: THREE.Object3D; clips: THREE.AnimationClip[] }> {
   const ext = extOf(file.name);
   const name = file.name;
@@ -311,7 +314,7 @@ async function loadOne(
     case 'brp': {
       const { loadCAD } = await import('./cad');
       onProgress('Starting the CAD engine (first time can take a few seconds)…');
-      return one(await loadCAD(await buf(), ext, name, onProgress));
+      return one(await loadCAD(await buf(), ext, name, onProgress, signal));
     }
     case 'off':
       return one(meshFromGeometry(parseOFF(await text()), name));
@@ -358,11 +361,26 @@ export const setSharedRenderer = (r: THREE.WebGLRenderer) => (sharedRenderer = r
 const getSharedRenderer = () => sharedRenderer;
 
 /** Downloads models listed in a URL (e.g. from #model=...) and returns them as File objects. */
-export async function filesFromUrls(list: string[]): Promise<File[]> {
-  return Promise.all(list.map(async (u) => {
-    const res = await fetch(u);
+export async function filesFromUrls(list: string[], onProgress?: (done: number, total: number) => void, signal?: AbortSignal): Promise<File[]> {
+  const loaded = new Array(list.length).fill(0), totals = new Array(list.length).fill(0);
+  const report = () => onProgress?.(loaded.reduce((a, b) => a + b, 0), totals.reduce((a, b) => a + b, 0));
+  return Promise.all(list.map(async (u, i) => {
+    const res = await fetch(u, { signal });
     if (!res.ok) throw new Error(`Could not download ${u} (HTTP ${res.status})`);
-    const blob = await res.blob();
+    totals[i] = Number(res.headers.get('content-length')) || 0;
+    // Stream the body so the progress bar moves for big downloads.
+    const chunks: Uint8Array[] = [];
+    const reader = res.body?.getReader();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded[i] += value.length;
+        report();
+      }
+    }
+    const blob = reader ? new Blob(chunks as BlobPart[]) : await res.blob();
     const name = decodeURIComponent(new URL(u, location.href).pathname.split('/').pop() || 'model');
     return new File([blob], name);
   }));
