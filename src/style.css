@@ -76,17 +76,21 @@ kbd {
   background: var(--panel); border-bottom: 1px solid var(--line);
   backdrop-filter: blur(14px);
 }
-.brand { display: inline-flex; align-items: center; gap: 12px; flex: none; padding-right: 4px; line-height: 1; }
-.brand-home { display: inline-flex; text-decoration: none; }
+/* Wordmark and byline share one text baseline. Vertical offsets use the `cap` unit (cap height),
+   so they stay exact at any font size. */
+.brand { display: inline-flex; align-items: baseline; gap: 12px; flex: none; padding-right: 4px; line-height: 1; }
+.brand-home { display: inline-flex; align-items: baseline; text-decoration: none; }
 .logo-main { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--hi); }
-/* "by BANKASI MEDIA": a hanging byline set off by a hairline, linking to bankasimedia.com */
-.logo-by {
-  display: inline-flex; align-items: flex-start; gap: 5px; align-self: stretch; padding: 9px 0 0 12px; margin: 10px 0 2px;
-  border-left: 1px solid var(--line-2); text-decoration: none; white-space: nowrap; transform: translateY(5px);
+.brand-sep { align-self: center; width: 1px; height: 22px; background: var(--line-2); flex: none; }
+/* "by BANKASI MEDIA", linking to bankasimedia.com */
+.logo-by { display: inline-flex; align-items: baseline; gap: 5px; text-decoration: none; white-space: nowrap; }
+.logo-byword { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; }
+.logo-bankasi { font-size: 12.5px; font-weight: 600; letter-spacing: 0.2em; color: var(--ink); text-transform: uppercase; transition: color 0.15s; }
+/* MEDIA: baseline-aligned first, then raised so its cap top meets BANKASI's cap top (12.5px / 6.5px caps). */
+.logo-sup {
+  font-size: 6.5px; font-weight: 600; letter-spacing: 0.24em; color: var(--accent); margin-left: -3px;
+  vertical-align: baseline; position: relative; top: calc(-1cap * (12.5 / 6.5 - 1)); transition: color 0.15s;
 }
-.logo-byword { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; line-height: 13px; }
-.logo-bankasi { font-size: 12.5px; font-weight: 600; letter-spacing: 0.2em; color: var(--ink); text-transform: uppercase; line-height: 13px; transition: color 0.15s; }
-.logo-sup { font-size: 6.5px; font-weight: 600; letter-spacing: 0.24em; color: var(--accent); margin: -3px 0 0 -3px; line-height: 1; transition: color 0.15s; }
 .logo-by:hover .logo-bankasi { color: var(--hi); }
 .logo-by:hover .logo-sup { color: var(--ink); }
 
@@ -392,8 +396,9 @@ body.embed .layout { top: 0; bottom: 0; }
 body:not(.has-model) .panel-toggle { display: none !important; }
 
 /* ------------------------------------------------------------ OMNIVIEWER logo (eye as the O) */
-.logo-main { display: inline-flex; align-items: center; }
-.logo-eye { width: 1.42em; height: 0.92em; margin-right: 0.16em; flex: none; color: var(--hi); overflow: visible; }
+.logo-main { display: inline-flex; align-items: baseline; }
+/* The eye sits on the baseline, then moves down so its centre is level with the middle of the capitals. */
+.logo-eye { width: 1.42em; height: 0.92em; margin-right: 0.16em; flex: none; color: var(--hi); overflow: visible; position: relative; top: calc(0.46em - 0.5cap); }
 .brand:hover .logo-eye circle:last-child { animation: blink-look 1.2s ease; }
 @keyframes blink-look { 30% { transform: translateX(2px); } 60% { transform: translateX(-2px); } }
 .logo-eye circle:last-child { transform-box: fill-box; transform-origin: center; }
