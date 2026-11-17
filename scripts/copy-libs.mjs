@@ -20,6 +20,9 @@ const copies = [
   ['web-ifc/web-ifc.wasm', 'web-ifc/web-ifc.wasm'],
   ['rhino3dm/rhino3dm.js', 'rhino3dm/rhino3dm.js'],
   ['rhino3dm/rhino3dm.wasm', 'rhino3dm/rhino3dm.wasm'],
+  ['geist/dist/fonts/geist-sans/Geist-Bold.ttf', 'fonts/Geist-Bold.ttf'],
+  ['geist/dist/fonts/geist-sans/Geist-Regular.ttf', 'fonts/Geist-Regular.ttf'],
+  ['geist/dist/fonts/geist-mono/GeistMono-Bold.ttf', 'fonts/GeistMono-Bold.ttf'],
 ];
 
 for (const [from, to] of copies) {

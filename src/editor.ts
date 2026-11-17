@@ -115,8 +115,9 @@ export class Editor {
   addPrimitive(kind: Primitive) {
     const root = this.ensureModel();
     const box = this.viewer.bounds();
-    const span = box.isEmpty() ? 1 : Math.max(...box.getSize(new THREE.Vector3()).toArray()) * 0.35;
-    const s = span || 1;
+    // An empty scene starts with 20-unit shapes (20 mm in a new scene).
+    const span = box.isEmpty() ? 20 : Math.max(...box.getSize(new THREE.Vector3()).toArray()) * 0.35;
+    const s = span || 20;
     const geos: Record<Primitive, () => THREE.BufferGeometry> = {
       box: () => new THREE.BoxGeometry(s, s, s),
       sphere: () => new THREE.SphereGeometry(s / 2, 48, 32),
@@ -145,6 +146,30 @@ export class Editor {
       label: `Add ${mesh.name}`,
       redo: () => { root.add(mesh); this.viewer.refreshMaterials(); this.select(mesh); this.changed(); },
       undo: () => { root.remove(mesh); if (this.selected === mesh) this.select(null); this.changed(); },
+    });
+    this.viewer.fit();
+  }
+
+  /**
+   * Adds a ready-made object (3D text, logo…) beside the model, resting on its floor.
+   * The object's own geometry should sit on y = 0 and be centred in x/z.
+   */
+  addObject(obj: THREE.Object3D, label: string) {
+    const root = this.ensureModel();
+    const box = this.viewer.bounds();
+    const own = new THREE.Box3().setFromObject(obj);
+    const w = own.isEmpty() ? 1 : own.getSize(new THREE.Vector3()).x;
+    const world = box.isEmpty() ? new THREE.Vector3() : new THREE.Vector3(box.max.x + w * 0.6 + (box.getSize(new THREE.Vector3()).x * 0.05), box.min.y, box.getCenter(new THREE.Vector3()).z);
+    root.updateMatrixWorld(true);
+    const rootScale = new THREE.Vector3(); root.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), rootScale);
+    obj.position.copy(world.applyMatrix4(root.matrixWorld.clone().invert()));
+    obj.scale.divide(rootScale);
+    obj.quaternion.copy(root.getWorldQuaternion(new THREE.Quaternion()).invert());
+    obj.traverse((o) => { o.userData.explodeBase = o.position.clone(); });
+    this.history.run({
+      label,
+      redo: () => { root.add(obj); this.viewer.refreshMaterials(); this.select(obj); this.changed(); },
+      undo: () => { root.remove(obj); if (this.selected === obj) this.select(null); this.changed(); },
     });
     this.viewer.fit();
   }

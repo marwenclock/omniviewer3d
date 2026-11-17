@@ -215,6 +215,8 @@ function newScene() {
   viewer.setUpAxis('y');
   state.modelName = 'Untitled scene';
   state.sourceUrls = null;
+  state.ext = '';
+  setUnit('mm');
   state.expanded = new Set([viewer.model!.uuid]);
   window.history.replaceState(null, '', location.pathname + location.search);
   document.body.classList.add('has-model');

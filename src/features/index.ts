@@ -8,6 +8,7 @@ import { initViews } from './views';
 import { initLook } from './look';
 import { initTurntable } from './turntable';
 import { initCompare } from './compare';
+import { initBuild } from './build';
 
 export function initFeatures() {
   initPrintTools();
@@ -19,4 +20,5 @@ export function initFeatures() {
   initLook();
   initTurntable();
   initCompare();
+  initBuild();
 }
