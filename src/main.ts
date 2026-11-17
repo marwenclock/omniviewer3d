@@ -1321,7 +1321,7 @@ $('#recentList').addEventListener('click', async (e) => {
 
 // ------------------------------------------------------------------ print estimate
 const costPrefs = () => {
-  const d = { material: 'pla', infill: 20, wall: 1.2, price: '', diameter: 1.75, copies: 1 };
+  const d = { material: 'pla', infill: 20, wall: 1.2, price: '', diameter: 1.75, copies: 1, basis: 'refill' as 'refill' | 'spool' };
   try { return { ...d, ...JSON.parse(store.get('cost', '{}')) }; } catch { return d; }
 };
 function costSection(): string {
@@ -1329,7 +1329,7 @@ function costSection(): string {
   if (!viewer.model || !s || !s.meshes || s.volume <= 0) return '';
   const p = costPrefs();
   const mat = MATERIALS.find((m) => m.id === p.material) ?? MATERIALS[0];
-  const price = p.price === '' ? mat.price : Number(p.price);
+  const price = p.price === '' ? (p.basis === 'spool' ? mat.spool : mat.refill) : Number(p.price);
   const toCm = UNITS[state.unit].toMeters * 100;
   const r = estimate({
     volumeCm3: s.volume * toCm ** 3, areaCm2: s.area * toCm ** 2, material: mat,
@@ -1345,10 +1345,11 @@ function costSection(): string {
     <div class="row"><label>Material</label><select data-cost="material">${MATERIALS.map((m) => `<option value="${m.id}" ${m.id === mat.id ? 'selected' : ''}>${m.name}</option>`).join('')}</select></div>
     ${mat.resin ? '' : `<div class="row"><label>Infill</label><input type="range" min="0" max="100" step="5" value="${p.infill}" data-cost="infill"/><span class="cost-val">${p.infill}%</span></div>
     <div class="row"><label>Walls</label><input type="number" step="0.1" min="0" value="${p.wall}" data-cost="wall"/><span class="cost-unit">mm</span></div>`}
-    <div class="row"><label>Price / kg</label><input type="number" step="0.5" min="0" value="${price}" data-cost="price"/><span class="cost-unit">${mat.resin ? 'per kg' : ''}</span></div>
+    ${mat.resin ? '' : `<div class="row"><label>Bought as</label><div class="seg"><button class="${p.basis !== 'spool' ? 'active' : ''}" data-costbasis="refill">Refill</button><button class="${p.basis === 'spool' ? 'active' : ''}" data-costbasis="spool">With spool</button></div></div>`}
+    <div class="row"><label>Price / kg</label><input type="number" step="0.01" min="0" value="${price}" data-cost="price"/><span class="cost-unit">USD</span></div>
     ${mat.resin ? '' : `<div class="row"><label>Filament</label><select data-cost="diameter"><option value="1.75" ${p.diameter == 1.75 ? 'selected' : ''}>1.75 mm</option><option value="2.85" ${p.diameter == 2.85 ? 'selected' : ''}>2.85 mm</option></select></div>`}
     <div class="row"><label>Copies</label><input type="number" step="1" min="1" value="${p.copies}" data-cost="copies"/></div>
-    <p class="note">Estimate from the model volume (${s.closed ? 'watertight' : 'not watertight, so less reliable'}), ${mat.resin ? 'printed solid' : 'with walls and infill'}. Solid part: ${fmtNum(r.solidGrams, 1)} g. Supports and purge are not included.</p>
+    <p class="note">Estimate from the model volume (${s.closed ? 'watertight' : 'not watertight, so less reliable'}), ${mat.resin ? 'printed solid' : 'with walls and infill'}. Solid part: ${fmtNum(r.solidGrams, 1)} g. Supports and purge are not included. ${p.price === '' ? (mat.resin ? 'Default price: typical standard resin.' : 'Default prices: Bambu Lab MSRP per kg.') : '<button class="link-btn" data-costreset>Reset to default price</button>'}</p>
   </div>`;
 }
 details.addEventListener('change', (e) => {
@@ -1561,3 +1562,15 @@ sheetObserver.observe($('#rightPanel'));
 new MutationObserver(measureSheet).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 window.addEventListener('resize', measureSheet);
 measureSheet();
+
+details.addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  const basis = t.closest<HTMLElement>('[data-costbasis]');
+  const reset = t.closest('[data-costreset]');
+  if (!basis && !reset) return;
+  const p = costPrefs();
+  if (basis) { p.basis = basis.dataset.costbasis as 'refill' | 'spool'; p.price = ''; }
+  if (reset) p.price = '';
+  store.set('cost', JSON.stringify(p));
+  renderDetails();
+});

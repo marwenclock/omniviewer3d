@@ -1,19 +1,22 @@
 // 3D-print weight, filament length and cost estimate from the model's volume and surface area.
 
-export interface Material { id: string; name: string; density: number; price: number; resin?: boolean }
+export interface Material { id: string; name: string; density: number; refill: number; spool: number; resin?: boolean }
 
-/** density in g/cm³, default price per kg in your currency */
+/**
+ * Density in g/cm³ and price per kg in USD, based on Bambu Lab's official US store MSRP (refill = filament only,
+ * spool = filament on a reusable spool, typically $3 more). Resin has no spool option. Users can override the price.
+ */
 export const MATERIALS: Material[] = [
-  { id: 'pla', name: 'PLA', density: 1.24, price: 20 },
-  { id: 'petg', name: 'PETG', density: 1.27, price: 22 },
-  { id: 'abs', name: 'ABS', density: 1.04, price: 20 },
-  { id: 'asa', name: 'ASA', density: 1.07, price: 25 },
-  { id: 'tpu', name: 'TPU (flexible)', density: 1.21, price: 30 },
-  { id: 'pla-cf', name: 'PLA-CF', density: 1.3, price: 35 },
-  { id: 'nylon', name: 'Nylon (PA)', density: 1.14, price: 45 },
-  { id: 'pc', name: 'Polycarbonate', density: 1.2, price: 40 },
-  { id: 'resin', name: 'Standard resin', density: 1.1, price: 35, resin: true },
-  { id: 'resin-abs', name: 'ABS-like resin', density: 1.15, price: 45, resin: true },
+  { id: 'pla', name: 'PLA (Basic)', density: 1.24, refill: 14.99, spool: 17.99 },
+  { id: 'petg', name: 'PETG', density: 1.27, refill: 15.99, spool: 18.99 },
+  { id: 'abs', name: 'ABS', density: 1.04, refill: 16.99, spool: 19.99 },
+  { id: 'asa', name: 'ASA', density: 1.07, refill: 14.99, spool: 17.99 },
+  { id: 'tpu', name: 'TPU 95A (flexible)', density: 1.21, refill: 22.19, spool: 25.19 },
+  { id: 'pla-cf', name: 'PLA-CF', density: 1.3, refill: 31.99, spool: 34.99 },
+  { id: 'pc', name: 'Polycarbonate (PC)', density: 1.2, refill: 20.99, spool: 23.99 },
+  { id: 'nylon', name: 'Nylon CF (PAHT-CF)', density: 1.22, refill: 59.98, spool: 65.98 },
+  { id: 'resin', name: 'Standard resin', density: 1.1, refill: 24.99, spool: 24.99, resin: true },
+  { id: 'resin-abs', name: 'ABS-like resin', density: 1.15, refill: 29.99, spool: 29.99, resin: true },
 ];
 
 export interface CostInput {
