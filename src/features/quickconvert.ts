@@ -104,6 +104,9 @@ export function qcAdd(files: File[]) {
     rows.push({ id: nextId++, files: group, name: f.name, ext: extOf(f.name), size: group.reduce((n, x) => n + x.size, 0), status: 'loading', clips: [], tris: 0, verts: 0, unit: 'mm', unitSrc: 'guess', up: 'y', target: 'glb', picked: false });
   }
   render();
+  // Bring the first new file into view: on a phone the list sits below the drop zone and presets.
+  const first = rows[rows.length - groupFiles(files).length];
+  if (first) { focusId = first.id; reveal(first.id); }
   void loadPending();
 }
 
@@ -112,6 +115,18 @@ export function qcAdd(files: File[]) {
 const READING = 'qc.reading';
 let crashNote = '';
 function mark(name: string | null) { try { name ? sessionStorage.setItem(READING, name) : sessionStorage.removeItem(READING); } catch { /* storage blocked */ } }
+
+let focusId = 0;
+// Scrolls the container rather than the row: re-rendering the list (a thumbnail arriving) would cancel a smooth
+// scrollIntoView on the old row element.
+const reveal = (id: number) => setTimeout(() => {
+  const el = host?.querySelector<HTMLElement>(`[data-row="${id}"]`);
+  const box = el?.closest<HTMLElement>('.welcome');
+  if (!el || !box || box.scrollHeight <= box.clientHeight) { el?.scrollIntoView({ block: 'nearest' }); return; }
+  const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+  if (r.top >= b.top && r.bottom <= b.bottom) return;
+  box.scrollTo({ top: box.scrollTop + r.top - b.top - (b.height - r.height) / 2, behavior: 'smooth' });
+}, 30);
 
 let loading = false;
 async function loadPending() {
@@ -137,6 +152,7 @@ async function loadPending() {
         r.status = 'ready';
         if (res.warnings.length) r.help = res.warnings.slice(0, 2).join(' ');
         render();
+        if (r.id === focusId) { focusId = 0; reveal(r.id); } // it grew when it loaded
         void thumb(r);
         if (instant && !needsUnitConfirm(r)) await convert(r, true);
       } catch (e: any) {
@@ -320,7 +336,7 @@ function rowHtml(r: Row) {
     : blocked ? `<span class="qc-status bad">${escHtml(blocked)}</span>`
     : `<span class="qc-status">${est ? `≈ ${fmtBytes(est)}` : ''}${rep?.lost.length ? ` · ${t('loses')} ${escHtml(rep.lost.join(', '))}` : ''}</span>`;
   const extChoice = exts(r.target).length > 1 ? `<select class="qc-ext" data-ext="${r.id}" aria-label="${t('File extension')}">${exts(r.target).map((e) => `<option ${(r.ext2 || f.ext) === e ? 'selected' : ''}>${e}</option>`).join('')}</select>` : '';
-  return `<li class="qc-row ${r.status}" data-row="${r.id}">
+  return `<li class="qc-row is-${r.status}" data-row="${r.id}">
     <label class="qc-pick" title="${t('Select for Compare')}"><input type="checkbox" data-pickrow="${r.id}" ${r.picked ? 'checked' : ''} ${r.obj ? '' : 'disabled'} aria-label="${t('Select')} ${escHtml(r.name)}"/></label>
     <div class="qc-thumb">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</div>
     <div class="qc-info">

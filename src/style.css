@@ -1132,7 +1132,7 @@ body.qc-open .drop-zone { min-height: 0; padding: 22px; }
   display: grid; grid-template-columns: auto 64px minmax(0, 1fr) auto auto; gap: 12px; align-items: center;
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
 }
-.qc-row.done { border-color: var(--line-strong); }
+.qc-row.is-done { border-color: var(--line-strong); }
 .qc-pick input { width: 16px; height: 16px; }
 .qc-crash { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 10px; font-size: 14px; color: var(--ink); }
 .qc-thumb { width: 64px; height: 64px; border-radius: 8px; background: var(--surface); display: flex; align-items: center; justify-content: center; overflow: hidden; }
