@@ -7,7 +7,6 @@ import { EXPORT_FORMATS, exportObject, describeExport, exportBlocker, staysYUp, 
 import { ProprietaryFormatError, PROPRIETARY } from '../formats-extra';
 import { guessUnit, defaultUp } from '../units';
 import { disposeObject } from '../viewer';
-import { renderShot } from './batch';
 import { compareWith } from './compare';
 import { icon } from '../icons';
 import { t } from '../i18n';
@@ -98,6 +97,7 @@ function groupFiles(files: File[]): File[][] {
 
 export function qcAdd(files: File[]) {
   if (!files.length) return;
+  crashNote = '';
   openQuickConvert();
   for (const group of groupFiles(files)) {
     const f = group[0];
@@ -107,6 +107,12 @@ export function qcAdd(files: File[]) {
   void loadPending();
 }
 
+// If the browser kills the tab while a file is being read (a phone running out of memory reloads the page),
+// reopen Quick Convert after the reload and say what happened instead of silently dropping back to the home screen.
+const READING = 'qc.reading';
+let crashNote = '';
+function mark(name: string | null) { try { name ? sessionStorage.setItem(READING, name) : sessionStorage.removeItem(READING); } catch { /* storage blocked */ } }
+
 let loading = false;
 async function loadPending() {
   if (loading) return;
@@ -115,6 +121,7 @@ async function loadPending() {
     for (const r of rows) {
       if (r.status !== 'loading') continue;
       try {
+        mark(r.name);
         const res = await loadFiles(r.files, () => {});
         r.obj = res.object; r.clips = res.animations;
         r.name = res.mainFiles[0] || r.name; r.ext = extOf(r.name);
@@ -139,7 +146,7 @@ async function loadPending() {
       }
       render();
     }
-  } finally { loading = false; }
+  } finally { loading = false; mark(null); }
 }
 
 async function thumb(r: Row) {
@@ -147,13 +154,51 @@ async function thumb(r: Row) {
   let mesh = false; r.obj.traverse((o: any) => { if (o.isMesh || o.isPoints || o.isLine) mesh = true; });
   if (!mesh) return;
   try {
-    const parent = r.obj.parent, rx = r.obj.rotation.x;
+    const rx = r.obj.rotation.x;
     if (r.up === 'z') r.obj.rotation.x = rx - Math.PI / 2;
-    const png = await renderShot(r.obj, 160, 160, true, '#000000');
-    r.obj.rotation.x = rx; if (parent) parent.add(r.obj);
-    r.thumb = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }));
+    try { r.thumb = snapshot(r.obj, 128); } finally { r.obj.rotation.x = rx; }
     render();
   } catch { /* thumbnails are optional */ }
+}
+
+/** A small thumbnail drawn with the viewer's own WebGL context into an offscreen target. A second context plus
+ *  environment lighting was enough for iPhone Safari to run out of memory and reload the page mid-conversion. */
+function snapshot(obj: THREE.Object3D, S: number): string {
+  const gl = ctx.viewer.renderer;
+  const parent = obj.parent;
+  const scene = new THREE.Scene();
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9), new THREE.HemisphereLight(0xffffff, 0x404040, 1.4));
+  scene.add(obj);
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const c = box.getCenter(new THREE.Vector3()), radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1e-6);
+  const cam = new THREE.PerspectiveCamera(35, 1, radius / 100, radius * 100);
+  cam.position.copy(c).addScaledVector(new THREE.Vector3(1, 0.75, 1.25).normalize(), (radius / Math.sin(THREE.MathUtils.degToRad(17.5))) * 1.05);
+  cam.lookAt(c);
+  const light = new THREE.DirectionalLight(0xffffff, 1.6); light.position.set(0.5, 1, 1); cam.add(light); scene.add(cam);
+  const rt = new THREE.WebGLRenderTarget(S, S);
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const prevTarget = gl.getRenderTarget(), prevColor = gl.getClearColor(new THREE.Color()), prevAlpha = gl.getClearAlpha();
+  const px = new Uint8Array(S * S * 4);
+  try {
+    gl.setRenderTarget(rt);
+    gl.setClearColor(0x000000, 0);
+    gl.clear();
+    gl.render(scene, cam);
+    gl.readRenderTargetPixels(rt, 0, 0, S, S, px);
+  } finally {
+    gl.setRenderTarget(prevTarget);
+    gl.setClearColor(prevColor, prevAlpha);
+    scene.remove(obj);
+    if (parent) parent.add(obj);
+    rt.dispose();
+    ctx.viewer.requestRender();
+  }
+  const cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const c2 = cv.getContext('2d')!, img = c2.createImageData(S, S);
+  for (let y = 0; y < S; y++) img.data.set(px.subarray((S - 1 - y) * S * 4, (S - y) * S * 4), y * S * 4); // GL rows are bottom-up
+  c2.putImageData(img, 0, 0);
+  return cv.toDataURL('image/png');
 }
 
 // ------------------------------------------------------------------ converting
@@ -292,7 +337,7 @@ function rowHtml(r: Row) {
     <div class="qc-actions">
       ${r.status === 'done' ? `<button class="btn-solid small" data-dl="${r.id}">${icon('download')} ${t('Download')}</button>${canShareFiles() ? `<button class="btn-outline small" data-share="${r.id}">${icon('share')}</button>` : ''}`
         : `<button class="btn-solid small" data-convert="${r.id}" ${r.obj && !blocked && r.status !== 'converting' ? '' : 'disabled'}>${needsUnitConfirm(r) && instant ? t('Confirm & download') : t('Convert')}</button>`}
-      <button class="btn-outline small" data-view="${r.id}" ${r.obj ? '' : 'disabled'}>${icon('cube')} ${t('Open 3D view')}</button>
+      <button class="btn-outline small" data-qcview="${r.id}" ${r.obj ? '' : 'disabled'}>${icon('cube')} ${t('Open 3D view')}</button>
       <button class="qc-x" data-remove="${r.id}" aria-label="${t('Remove')} ${escHtml(r.name)}">${icon('x')}</button>
     </div>
   </li>`;
@@ -326,6 +371,7 @@ function render() {
       <button class="btn-outline" data-convertall ${ready ? '' : 'disabled'}>${t('Convert all')}</button>
       <button class="btn-solid" data-dlall ${ready ? '' : 'disabled'}>${icon('download')} ${done > 1 || ready > 1 ? t('Download all (ZIP)') : t('Download')}</button>
     </div>` : '';
+  if (crashNote) host.insertAdjacentHTML('afterbegin', `<p class="qc-crash" role="alert">${escHtml(crashNote)}</p>`);
   host.innerHTML += `<div class="qc-history">
       ${hist.length ? `<details><summary>${t('Recent conversions on this device')} (${hist.length})</summary><ul>${hist.map((h) => `<li><b>${escHtml(h.name)}</b> <span class="muted">${escHtml(h.from.toUpperCase())} → ${escHtml(h.to.toUpperCase())} · ${fmtBytes(h.size)} · ${new Date(h.at).toLocaleDateString()}</span></li>`).join('')}</ul><button class="link-btn" data-clearhist>${t('Clear')}</button></details>` : ''}
       <label class="check small"><input type="checkbox" data-remember ${remember() ? 'checked' : ''}/> ${t('Remember conversions (names and formats only, never the files)')}</label>
@@ -401,7 +447,7 @@ function onClick(e: MouseEvent) {
   if (el.closest('[data-dl]')) { const r = row('dl'); if (r?.result) download(r.result.blob, r.result.name); return; }
   if (el.closest('[data-share]')) { const r = row('share'); if (r) void share(r); return; }
   if (el.closest('[data-remove]')) { const r = row('remove'); if (r) removeRow(r); return; }
-  if (el.closest('[data-view]')) { const r = row('view'); if (r) { closeQuickConvert(); void ctx.openFiles(r.files); } return; }
+  if (el.closest("[data-qcview]")) { const r = row("qcview"); if (r) { closeQuickConvert(); void ctx.openFiles(r.files); } return; }
   if (el.closest('[data-convertall]')) { void convertAll(); return; }
   if (el.closest('[data-dlall]')) { void downloadAll(); return; }
   if (el.closest('[data-compare]')) {
@@ -470,4 +516,11 @@ const history_replace = () => { try { window.history.replaceState(null, '', loca
 export function initQuickConvert() {
   registerCommand({ id: 'quickconvert', label: 'Quick convert files (no viewer)…', group: 'File', keywords: 'convert export batch fast simple without preview', run: () => { openQuickConvert(); document.getElementById('fileInput')?.click(); } });
   void takeSharedFiles();
+  let was: string | null = null;
+  try { was = sessionStorage.getItem(READING); } catch { /* storage blocked */ }
+  if (was) {
+    mark(null);
+    crashNote = t('The page reloaded while reading “{name}”: this device ran out of memory. Try again, or use a computer for very large files.').replace('{name}', was);
+    if (!qcIsOpen()) openQuickConvert(); else render();
+  }
 }

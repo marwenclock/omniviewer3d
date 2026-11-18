@@ -280,6 +280,7 @@ const ROWS: [string, string, string, string, string][] = [
   ['Convert all', 'Convertir todo', 'Alle konvertieren', 'Tout convertir', 'Converter tudo'],
   ['Download all (ZIP)', 'Descargar todo (ZIP)', 'Alle herunterladen (ZIP)', 'Tout télécharger (ZIP)', 'Baixar tudo (ZIP)'],
   ['Open in viewer', 'Abrir en el visor', 'Im Viewer öffnen', 'Ouvrir dans la visionneuse', 'Abrir no visualizador'],
+  ['The page reloaded while reading “{name}”: this device ran out of memory. Try again, or use a computer for very large files.', 'La página se recargó al leer «{name}»: el dispositivo se quedó sin memoria. Inténtalo de nuevo o usa un ordenador para archivos muy grandes.', 'Die Seite wurde beim Lesen von „{name}“ neu geladen: Das Gerät hatte zu wenig Speicher. Versuche es erneut oder nutze für sehr große Dateien einen Computer.', 'La page s’est rechargée pendant la lecture de « {name} » : l’appareil a manqué de mémoire. Réessayez, ou utilisez un ordinateur pour les très gros fichiers.', 'A página recarregou ao ler “{name}”: o dispositivo ficou sem memória. Tente de novo ou use um computador para arquivos muito grandes.'],
   ['Open 3D view', 'Abrir vista 3D', '3D-Ansicht öffnen', 'Ouvrir la vue 3D', 'Abrir vista 3D'],
   ['Reading…', 'Leyendo…', 'Wird gelesen…', 'Lecture…', 'Lendo…'],
   ['Converting…', 'Convirtiendo…', 'Wird konvertiert…', 'Conversion…', 'Convertendo…'],
