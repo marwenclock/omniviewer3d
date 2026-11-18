@@ -1138,6 +1138,34 @@ body.qc-open .drop-zone { min-height: 0; padding: 22px; }
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
 }
 .qc-row.is-done { border-color: var(--line-strong); }
+.qc-row.is-previewed { border-color: var(--ink-2); }
+button.qc-thumb { padding: 0; border: 1px solid transparent; cursor: zoom-in; }
+button.qc-thumb:hover { border-color: var(--line-strong); }
+/* Mini 3D preview above the list: caption, model, then the footer, so nothing covers the model */
+.qc-preview { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; margin: 0 0 14px; width: 100%; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+body:not(.qc-open) .qc-preview, .qc-preview[hidden] { display: none; }
+.qcp-cap { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px 0; min-width: 0; }
+.qcp-cap b { font-size: 14px; font-weight: 600; color: var(--hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qcp-cap small { font-size: 12px; color: var(--muted); min-height: 1em; }
+.qcp-stage { position: relative; aspect-ratio: 16 / 8; max-height: 380px; width: 100%; }
+.qcp-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.qcp-stage canvas:active { cursor: grabbing; }
+.qcp-msg { grid-row: 2; grid-column: 1; display: none; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; font-size: 13.5px; color: var(--ink-2); z-index: 1; }
+.qc-preview[data-state='loading'] .qcp-msg, .qc-preview[data-state='failed'] .qcp-msg { display: flex; }
+.qcp-stage { grid-row: 2; grid-column: 1; }
+.qcp-msg .spinner { width: 20px; height: 20px; }
+.qcp-foot { display: flex; align-items: center; gap: 12px; padding: 0 12px 12px 14px; }
+.qcp-hint { flex: 1; font-size: 11.5px; color: var(--muted); transition: opacity 0.3s; }
+.qc-preview.touched .qcp-hint { opacity: 0; }
+.qc-preview:not([data-state='ready']) .qcp-foot { visibility: hidden; }
+.qcp-full { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; white-space: nowrap; }
+.qcp-full .icon { width: 16px; height: 16px; }
+@media (max-width: 560px) {
+  .qcp-stage { aspect-ratio: 4 / 3; }
+  .qcp-hint { display: none; }
+  .qcp-full { flex: 1; justify-content: center; }
+}
+
 .qc-pick input { width: 16px; height: 16px; }
 .qc-crash { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 10px; font-size: 14px; color: var(--ink); }
 .qc-thumb { width: 64px; height: 64px; border-radius: 8px; background: var(--surface); display: flex; align-items: center; justify-content: center; overflow: hidden; }

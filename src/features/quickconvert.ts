@@ -8,6 +8,7 @@ import { ProprietaryFormatError, PROPRIETARY } from '../formats-extra';
 import { guessUnit, defaultUp } from '../units';
 import { disposeObject } from '../viewer';
 import { compareWith } from './compare';
+import { mountPreview, showPreview, pausePreview } from './qcpreview';
 import { icon } from '../icons';
 import { t } from '../i18n';
 
@@ -106,7 +107,7 @@ export function qcAdd(files: File[]) {
   render();
   // Bring the first new file into view: on a phone the list sits below the drop zone and presets.
   const first = rows[rows.length - groupFiles(files).length];
-  if (first) { focusId = first.id; reveal(first.id); }
+  if (first) { focusId = first.id; previewId = first.id; reveal(first.id); }
   void loadPending();
 }
 
@@ -117,6 +118,7 @@ let crashNote = '';
 function mark(name: string | null) { try { name ? sessionStorage.setItem(READING, name) : sessionStorage.removeItem(READING); } catch { /* storage blocked */ } }
 
 let focusId = 0;
+let previewId = 0; // the row shown in the 3D preview
 // Scrolls the container rather than the row: re-rendering the list (a thumbnail arriving) would cancel a smooth
 // scrollIntoView on the old row element.
 const reveal = (id: number) => setTimeout(() => {
@@ -312,6 +314,7 @@ function removeRow(r: Row) {
   if (r.obj) disposeObject(r.obj);
   if (r.thumb) URL.revokeObjectURL(r.thumb);
   rows = rows.filter((x) => x !== r);
+  if (previewId === r.id) previewId = (rows.find((x) => x.obj) ?? rows[0])?.id ?? 0;
   render();
 }
 
@@ -336,9 +339,9 @@ function rowHtml(r: Row) {
     : blocked ? `<span class="qc-status bad">${escHtml(blocked)}</span>`
     : `<span class="qc-status">${est ? `≈ ${fmtBytes(est)}` : ''}${rep?.lost.length ? ` · ${t('loses')} ${escHtml(rep.lost.join(', '))}` : ''}</span>`;
   const extChoice = exts(r.target).length > 1 ? `<select class="qc-ext" data-ext="${r.id}" aria-label="${t('File extension')}">${exts(r.target).map((e) => `<option ${(r.ext2 || f.ext) === e ? 'selected' : ''}>${e}</option>`).join('')}</select>` : '';
-  return `<li class="qc-row is-${r.status}" data-row="${r.id}">
+  return `<li class="qc-row is-${r.status}${rows.length > 1 && r.id === previewId ? ' is-previewed' : ''}" data-row="${r.id}">
     <label class="qc-pick" title="${t('Select for Compare')}"><input type="checkbox" data-pickrow="${r.id}" ${r.picked ? 'checked' : ''} ${r.obj ? '' : 'disabled'} aria-label="${t('Select')} ${escHtml(r.name)}"/></label>
-    <div class="qc-thumb">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</div>
+    <button class="qc-thumb" type="button" data-preview="${r.id}" aria-label="${t('Preview')} ${escHtml(r.name)}" aria-pressed="${r.id === previewId}">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</button>
     <div class="qc-info">
       <b title="${escHtml(r.name)}">${escHtml(r.name)}</b>
       <small>${escHtml(r.ext.toUpperCase())} · ${fmtBytes(r.size)}${r.tris ? ` · ${r.tris.toLocaleString()} ${t('triangles')}` : ''}${r.dims ? ` · ${dimsText(r)}` : ''}</small>
@@ -353,7 +356,6 @@ function rowHtml(r: Row) {
     <div class="qc-actions">
       ${r.status === 'done' ? `<button class="btn-solid small" data-dl="${r.id}">${icon('download')} ${t('Download')}</button>${canShareFiles() ? `<button class="btn-outline small" data-share="${r.id}">${icon('share')}</button>` : ''}`
         : `<button class="btn-solid small" data-convert="${r.id}" ${r.obj && !blocked && r.status !== 'converting' ? '' : 'disabled'}>${needsUnitConfirm(r) && instant ? t('Confirm & download') : t('Convert')}</button>`}
-      <button class="btn-outline small" data-qcview="${r.id}" ${r.obj ? '' : 'disabled'}>${icon('cube')} ${t('Open 3D view')}</button>
       <button class="qc-x" data-remove="${r.id}" aria-label="${t('Remove')} ${escHtml(r.name)}">${icon('x')}</button>
     </div>
   </li>`;
@@ -393,6 +395,22 @@ function render() {
       <label class="check small"><input type="checkbox" data-remember ${remember() ? 'checked' : ''}/> ${t('Remember conversions (names and formats only, never the files)')}</label>
     </div>`;
   if (picker) positionPicker();
+  updatePreview();
+}
+
+function updatePreview() {
+  const r = rows.find((x) => x.id === previewId) ?? rows.find((x) => x.obj);
+  if (!r) { showPreview({ kind: 'empty' }); return; }
+  previewId = r.id;
+  if (r.obj) showPreview({ kind: 'ready', name: r.name, obj: r.obj, up: r.up, key: r.id, caption: [dimsText(r), r.tris ? `${r.tris.toLocaleString()} ${t('triangles')}` : ''].filter(Boolean).join(' · ') });
+  else if (r.status === 'failed') showPreview({ kind: 'failed', name: r.name, error: r.error || t('This file could not be read.') });
+  else showPreview({ kind: 'loading', name: r.name });
+}
+function openPreviewedInEditor() {
+  const r = rows.find((x) => x.id === previewId);
+  if (!r) return;
+  closeQuickConvert();
+  void ctx.openFiles(r.files);
 }
 let optsOpen = false;
 const optsChanged = () => !opts.upright || !!opts.outUnit || opts.scale !== 100 || opts.reduce !== 100 || opts.merge;
@@ -462,6 +480,7 @@ function onClick(e: MouseEvent) {
   if (el.closest('[data-convert]')) { const r = row('convert'); if (r) { if (r.unitSrc === 'guess') r.unitSrc = 'user'; void convert(r, !!instant); } return; }
   if (el.closest('[data-dl]')) { const r = row('dl'); if (r?.result) download(r.result.blob, r.result.name); return; }
   if (el.closest('[data-share]')) { const r = row('share'); if (r) void share(r); return; }
+  if (el.closest('[data-preview]')) { const r = row('preview'); if (r) { previewId = r.id; render(); document.querySelector('.qc-preview')?.scrollIntoView({ block: 'nearest' }); } return; }
   if (el.closest('[data-remove]')) { const r = row('remove'); if (r) removeRow(r); return; }
   if (el.closest("[data-qcview]")) { const r = row("qcview"); if (r) { closeQuickConvert(); void ctx.openFiles(r.files); } return; }
   if (el.closest('[data-convertall]')) { void convertAll(); return; }
@@ -497,6 +516,7 @@ export function openQuickConvert(o: { to?: ExportId; instant?: boolean } = {}) {
   if (!host) {
     host = document.getElementById('qcHost');
     host?.addEventListener('click', onClick);
+    if (host) mountPreview(host, openPreviewedInEditor);
     host?.addEventListener('change', onChange);
     host?.addEventListener('input', (e) => { const el = e.target as HTMLInputElement; if (el.dataset.opt === 'reduce') { const out = el.parentElement?.querySelector('output'); if (out) out.textContent = el.value + '%'; } });
   }
@@ -509,6 +529,7 @@ export function openQuickConvert(o: { to?: ExportId; instant?: boolean } = {}) {
 export function closeQuickConvert() {
   document.body.classList.remove('qc-open');
   closePicker();
+  pausePreview();
   if (instant && !pageWording) pageWording = [document.getElementById('dzTitle')?.textContent || '', document.getElementById('dzBtn')?.textContent || ''];
   setDropZone(t('Drop a model, folder or ZIP'), t('Open 3D files'));
   syncModeSwitch();
