@@ -46,6 +46,8 @@ export class Viewer {
   private listeners = new Set<() => void>();
   private frameHooks = new Set<(dt: number) => void>();
   background = '#151515';
+  /** the canvas-drawn corner axis gizmo; off when the app shows its labelled view cube instead */
+  showAxisHelper = true;
   /** true while recording a video / GIF: the corner axis gizmo is not drawn */
   recording = false;
   /** temporary visual overrides (inspector modes) that must be undone while exporting */
@@ -104,7 +106,7 @@ export class Viewer {
     this.viewHelper = this.makeViewHelper();
 
     this.renderer.domElement.addEventListener('pointerup', (e) => {
-      if (this.viewHelper.handleClick(e)) e.stopImmediatePropagation();
+      if (this.showAxisHelper && this.viewHelper.handleClick(e)) e.stopImmediatePropagation();
     });
     this.controls.addEventListener('change', () => this.requestRender());
     // Any user input or panel change keeps frames coming for a moment; idle scenes stop drawing.
@@ -181,7 +183,7 @@ export class Viewer {
     this.renderer.clear();
     if (this.split && this.split.left.length + this.split.right.length) this.renderSplit();
     else this.renderer.render(this.scene, this.camera);
-    if (!this.recording) this.viewHelper?.render(this.renderer);
+    if (!this.recording && this.showAxisHelper) this.viewHelper?.render(this.renderer);
     this.labels.render(this.scene, this.camera);
   }
 

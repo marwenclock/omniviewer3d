@@ -9,17 +9,117 @@
   "background_color": "#151515",
   "theme_color": "#151515",
   "icons": [
-    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Convert a file", "url": "./convert/" },
-    { "name": "Batch convert", "url": "./batch-3d-converter/" },
-    { "name": "Measure a model", "url": "./measure/" }
+    {
+      "name": "Quick convert",
+      "url": "./convert/"
+    },
+    {
+      "name": "Batch convert",
+      "url": "./batch-3d-converter/"
+    },
+    {
+      "name": "Measure a model",
+      "url": "./measure/"
+    }
   ],
   "file_handlers": [
-    { "action": "./", "accept": { "model/stl": [".stl"], "model/gltf-binary": [".glb"], "model/gltf+json": [".gltf"], "model/obj": [".obj"], "model/3mf": [".3mf"], "application/step": [".step", ".stp"], "application/octet-stream": [".fbx", ".ply", ".3dm", ".ifc", ".omniproj"] } }
-  ]
+    {
+      "action": "./",
+      "accept": {
+        "model/stl": [
+          ".stl"
+        ],
+        "model/gltf-binary": [
+          ".glb"
+        ],
+        "model/gltf+json": [
+          ".gltf"
+        ],
+        "model/obj": [
+          ".obj"
+        ],
+        "model/3mf": [
+          ".3mf"
+        ],
+        "application/step": [
+          ".step",
+          ".stp"
+        ],
+        "application/octet-stream": [
+          ".fbx",
+          ".ply",
+          ".3dm",
+          ".ifc",
+          ".omniproj"
+        ]
+      }
+    }
+  ],
+  "share_target": {
+    "action": "./convert/?share=1",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "files",
+          "accept": [
+            "model/*",
+            "application/octet-stream",
+            "application/zip",
+            "text/plain",
+            "application/sla",
+            "application/step",
+            ".stl",
+            ".obj",
+            ".glb",
+            ".gltf",
+            ".fbx",
+            ".3mf",
+            ".step",
+            ".stp",
+            ".iges",
+            ".igs",
+            ".3dm",
+            ".ifc",
+            ".ply",
+            ".dae",
+            ".usdz",
+            ".usd",
+            ".amf",
+            ".off",
+            ".dxf",
+            ".x3d",
+            ".wrl",
+            ".zip"
+          ]
+        }
+      ]
+    }
+  }
 }

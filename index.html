@@ -211,6 +211,8 @@
                 <span class="dz-btn" id="dzBtn" data-i18n="Open 3D files">Open 3D files</span>
                 <span class="dz-paste" data-i18n="or paste files with Ctrl+V">or paste files with Ctrl+V</span>
               </button>
+              <div class="qc" id="qcHost" aria-live="polite"></div>
+              <p class="qc-note">Converted on your device, never uploaded. <button class="link-btn" data-action="closeqc" data-i18n="Use the 3D viewer instead">Use the 3D viewer instead</button></p>
               <div class="tasks" role="group" aria-label="What do you want to do?">
                 <span class="tasks-label" data-i18n="What do you want to do?">What do you want to do?</span>
                 <button class="task task-primary" data-action="convertfile"><i data-icon="swap"></i><span data-i18n="Convert a file">Convert a file</span></button>
@@ -285,6 +287,7 @@
     <footer class="statusbar" id="statusbar">
       <span id="statusLeft" role="status">Ready</span>
       <span class="grow"></span>
+      <button class="status-kbd" data-action="help" aria-label="Keyboard shortcuts"><span data-i18n="Shortcuts">Shortcuts</span> <kbd>?</kbd></button>
       <span id="statusRight"></span>
       <span class="status-brand">© <span id="year"></span> <a href="https://bankasimedia.com" target="_blank" rel="noopener">BANKASI MEDIA</a> · Free &amp; open source · No ads</span>
     </footer>

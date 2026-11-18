@@ -81,7 +81,7 @@ export const EXPORT_FORMATS = [
     tags: 'web3d x3dom xml iso standard vrml successor science education',
     note: 'ISO web 3D standard (XML). One colour per part and vertex colours, in metres.' },
   { id: 'wrl', label: 'VRML 2.0 (WRL)', ext: 'wrl', alias: ['vrml'], convention: 'metres-y', keeps: K(true, false, true, false, false), group: 'apps', needs: 'mesh',
-    tags: 'vrml wrl legacy 3d printing colour color full colour full color sandstone shapeways matlab solidworks',
+    tags: 'vrml wrl legacy 3d printing colour color full colour full color sandstone shapeways matlab',
     note: 'Classic VRML 97 with colours. Still used for full-colour printing services.' },
   { id: 'dxf', label: 'DXF (3D faces)', ext: 'dxf', convention: 'unitless', keeps: K(false, false, false, false, true, false, true), group: 'cad',
     tags: 'autocad cad drawing 3dface librecad fusion rhino sketchup layers',

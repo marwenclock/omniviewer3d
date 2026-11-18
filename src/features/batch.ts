@@ -34,7 +34,7 @@ function buildJobs(files: File[]): Job[] {
 
 // ------------------------------------------------------------------ product shots
 let shotRenderer: THREE.WebGLRenderer | null = null;
-async function renderShot(obj: THREE.Object3D, w: number, h: number, transparent: boolean, bg: string): Promise<Uint8Array> {
+export async function renderShot(obj: THREE.Object3D, w: number, h: number, transparent: boolean, bg: string): Promise<Uint8Array> {
   if (!shotRenderer) {
     shotRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     shotRenderer.outputColorSpace = THREE.SRGBColorSpace;

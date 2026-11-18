@@ -258,6 +258,9 @@ registerPanel({
   },
 });
 
+/** Opens the compare tool against the given files (used by Quick Convert's "Compare" for two rows). */
+export async function compareWith(files: File[]) { ctx.setTool('compare'); await openOther(files); }
+
 export function initCompare() {
   registerCommand({ id: 'compare', label: 'Compare with another model…', group: 'Inspect', keywords: 'diff revision version overlay wipe deviation', run: () => ctx.setTool('compare'), enabled: () => !!ctx.viewer.model });
   ctx.viewer.onChange(() => { if (other && !other.parent) other = null; });

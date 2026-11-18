@@ -27,6 +27,8 @@ import { LOOKS, currentLook, setLook, BACKDROPS, setBackdrop, setShadow, shadowE
 import { CAD_QUALITY, cadQuality } from './cad';
 import { helpArticlesHtml, releaseNotesHtml } from './features/docs';
 import { ProprietaryFormatError, PROPRIETARY, extractPreview, type ProprietaryInfo } from './formats-extra';
+import { initQuickConvert, openQuickConvert, closeQuickConvert, qcAdd, qcIsOpen } from './features/quickconvert';
+import { initViewCube } from './features/viewcube';
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -278,6 +280,7 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
     history.clear();
     document.body.classList.add('has-model');
     viewer.autoplay = prefs.autoplay;
+    if (arrangeNext) { arrangeNext = false; if (arrangeSideBySide(res.object, extOf(res.mainFiles[0]))) setTimeout(() => toast(t('Placed the models side by side')), 600); }
     viewer.setModel(res.object, res.animations);
     viewer.setExplode(0);
     state.modelName = res.mainFiles.length === 1 ? res.mainFiles[0] : `${res.mainFiles.length} files`;
@@ -330,6 +333,28 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
       if (state.abort === ac) state.abort = null;
     }
   }
+}
+
+/** Set when the user picks "Side by side" for several dropped files. */
+let arrangeNext = false;
+/** Lays the files of a multi-file open out on a grid on the ground plane, so they don't sit on top of each other. */
+function arrangeSideBySide(root: THREE.Object3D, ext: string): boolean {
+  const kids = root.children.filter((c) => !c.userData.helper);
+  if (kids.length < 2) return false;
+  const zUp = defaultUp(ext) === 'z';
+  root.updateMatrixWorld(true);
+  const boxes = kids.map((k) => new THREE.Box3().setFromObject(k));
+  const sizes = boxes.map((b) => b.getSize(new THREE.Vector3()));
+  const across = (v: THREE.Vector3) => Math.max(v.x, zUp ? v.y : v.z);
+  const cell = Math.max(...sizes.map(across)) * 1.2 || 1;
+  const cols = Math.ceil(Math.sqrt(kids.length));
+  kids.forEach((k, i) => {
+    const c = boxes[i].getCenter(new THREE.Vector3());
+    const tx = (i % cols) * cell, tz = Math.floor(i / cols) * cell;
+    const off = zUp ? new THREE.Vector3(tx - c.x, tz - c.y, -boxes[i].min.z) : new THREE.Vector3(tx - c.x, -boxes[i].min.y, tz - c.z);
+    k.position.add(off);
+  });
+  return true;
 }
 
 const countParts = (o: THREE.Object3D) => { let n = 0; o.traverse((c: any) => { if ((c.isMesh || c.isPoints || c.isLine) && !c.userData.helper) n++; }); return n; };
@@ -391,8 +416,8 @@ function history_replaceHash(urls: string[]) {
 /** After a file opens, jump straight to what this landing page is about. */
 function applyPageIntent() {
   const tool = PAGE.tool;
-  if (PAGE.to) { const to = PAGE.to; setTimeout(() => (store.get(autoKey(to), '') ? autoExport(to) : showExportDialog(to)), 350); return; }
-  if (tool === 'convert') { setTimeout(() => showExportDialog(), 350); return; }
+  // Converter pages convert in Quick Convert (no viewer); a model opened from there is for looking, not re-exporting.
+  if (PAGE.to || tool === 'convert') return;
   if (tool === 'paint' || tool === 'measure') { setTool(tool); return; }
   if (tool === 'cost') { scrollToSection('sec-cost'); return; }
   if (tool && panels.has(tool)) { setTool(tool); return; }
@@ -669,7 +694,8 @@ function runAction(a: string) {
     case 'recipes': showRecipes(); break;
     case 'storagehelp': showHelpCentre('storage'); break;
     case 'sample': openSample(); break;
-    case 'convertfile': pendingIntent = 'convert'; ($('#fileInput') as HTMLInputElement).click(); break;
+    case 'convertfile': openQuickConvert(); ($('#fileInput') as HTMLInputElement).click(); break;
+    case 'closeqc': closeQuickConvert(); break;
     case 'formats': showFormatsDialog(); break;
   }
 }
@@ -943,8 +969,10 @@ window.addEventListener('orientationchange', () => setTimeout(ensureModelVisible
 // ------------------------------------------------------------------ file input & drag-drop
 $('#fileInput').addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
-  openFiles([...(input.files || [])]);
+  const picked = [...(input.files || [])];
   input.value = '';
+  if (qcIsOpen()) { pendingIntent = null; qcAdd(picked); return; }
+  openFiles(picked);
 });
 
 let dragDepth = 0;
@@ -956,8 +984,11 @@ window.addEventListener('drop', async (e) => {
   dragDepth = 0;
   $('#dropOverlay').classList.remove('show');
   const files = await filesFromDrop(e.dataTransfer!);
+  if (qcIsOpen()) { qcAdd(files); return; }
   const mode = await chooseOpenMode(files);
   if (mode === 'batch') { showBatchDialog(); return; }
+  if (mode === 'qc') { qcAdd(files); return; }
+  if (mode === 'grid') { arrangeNext = true; openFiles(files, null, 'replace'); return; }
   if (mode) openFiles(files, null, mode, mode !== 'replace');
 });
 
@@ -965,7 +996,7 @@ window.addEventListener('drop', async (e) => {
  * Asks how dropped files should open when it matters (CA-16, CA-17): several unrelated models (open together or
  * batch convert), or a model already open (replace, add to the scene, or open in a new tab).
  */
-async function chooseOpenMode(files: File[]): Promise<OpenMode | 'batch' | null> {
+async function chooseOpenMode(files: File[]): Promise<OpenMode | 'batch' | 'grid' | 'qc' | null> {
   const models = files.filter((f) => MODEL_EXTS_APP.has(extOf(f.name)));
   const fromFolder = files.some((f) => (filePaths.get(f) || '').includes('/'));
   const many = models.length > 1 && !fromFolder;
@@ -975,18 +1006,20 @@ async function chooseOpenMode(files: File[]): Promise<OpenMode | 'batch' | null>
       <p>${many ? 'How should these files open?' : 'A model is already open.'}</p>
       <div class="choice-list">
         ${viewer.model ? `<button class="choice" data-om="replace"><b>Replace the current model</b><small>${history.dirty ? 'You will be asked about unsaved changes.' : 'The current model closes.'}</small></button>` : ''}
-        ${many && !viewer.model ? `<button class="choice" data-om="replace"><b>Open together</b><small>All files in one scene, for assemblies.</small></button>` : ''}
+        ${many && !viewer.model ? `<button class="choice" data-om="grid"><b>Side by side</b><small>Each model in its own spot, to look at them together.</small></button>` : ''}
+        ${many && !viewer.model ? `<button class="choice" data-om="replace"><b>Open together</b><small>Keep their positions, for the parts of an assembly.</small></button>` : ''}
+        ${many ? `<button class="choice" data-om="qc"><b>Just convert them</b><small>Quick Convert: pick a format and download, no viewer.</small></button>` : ''}
         ${viewer.model ? `<button class="choice" data-om="add"><b>Add to this scene</b><small>Converted to ${UNITS[state.unit].label.toLowerCase()}; one undo step.</small></button>` : ''}
         ${viewer.model ? `<button class="choice" data-om="tab"><b>Open in a new tab</b><small>Keep the current model open next to it.</small></button>` : ''}
         ${many ? `<button class="choice" data-om="batch"><b>Batch convert</b><small>Convert each file separately into one ZIP.</small></button>` : ''}
       </div>
       <div class="modal-actions"><button class="btn-outline" data-om="">${t('Cancel')}</button></div>`);
     let done = false;
-    const finish = (v: OpenMode | 'batch' | null) => { if (!done) { done = true; resolve(v); } };
+    const finish = (v: OpenMode | 'batch' | 'grid' | 'qc' | null) => { if (!done) { done = true; resolve(v); } };
     $('#modalCard').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-om]');
       if (!b) return;
-      const v = b.dataset.om as OpenMode | 'batch' | '';
+      const v = b.dataset.om as OpenMode | 'batch' | 'grid' | 'qc' | '';
       modal.close();
       finish(v || null);
       if (v === 'batch') setTimeout(() => (window as any).__omniBatchFiles?.(files), 50);
@@ -2439,6 +2472,13 @@ async function addCredit(url: string, w: number, h: number): Promise<string> {
 }
 
 /** Share: explains exactly what a link contains (OV-084) and builds embed codes with presets (OV-114). */
+/** A link that reopens this model at this exact camera angle (models opened from a web address only). */
+function copyViewLink() {
+  if (!state.sourceUrls?.length) { toast(t('Files on your device have no web address to link to. Use Saved views to keep this angle, or open the model from a link first.'), true); return; }
+  const link = `${location.origin}${location.pathname}#model=${state.sourceUrls.map(encodeURIComponent).join(',')}&cam=${cameraString()}`;
+  navigator.clipboard?.writeText(link).then(() => toast(t('Link to this view copied')), () => toast(link));
+}
+
 function showShareDialog() {
   if (!state.sourceUrls) {
     openModal(`<h2 id="dlgTitle">Share a model</h2>
@@ -2671,6 +2711,11 @@ Object.assign(ctx, {
   closeModal: () => modal.close(),
 });
 initFeatures();
+initQuickConvert();
+initViewCube();
+// Converter pages open Quick Convert: /convert/ to choose a target, /<from>-to-<to>/ converts and downloads on drop.
+if (PAGE.kind === 'convert' && PAGE.to) openQuickConvert({ to: PAGE.to, instant: true });
+else if (PAGE.tool === 'convert') openQuickConvert();
 registerCoreCommands();
 registerMainContextActions();
 
@@ -3174,6 +3219,7 @@ function registerCoreCommands() {
     { id: 'ar', label: 'View in AR (iPhone / iPad)', group: 'Present', keywords: 'augmented reality quick look usdz', run: () => viewInAR(), enabled: has },
     { id: 'recipes', label: 'Workflow recipes…', group: 'Tools', keywords: 'automate batch steps macro', run: () => showRecipes() },
     { id: 'pauseall', label: 'Pause all motion', group: 'View', keywords: 'stop animation autorotate reduce motion', run: () => pauseAllMotion() },
+    { id: 'viewlink', label: 'Copy link to this view', group: 'View', keywords: 'share camera angle url bookmark', run: copyViewLink, enabled: has },
     { id: 'resetpanels', label: 'Reset panel sizes', group: 'View', run: () => { for (const s of ['left', 'right']) { document.documentElement.style.removeProperty(`--${s}-w`); store.set(`panelW.${s}`, ''); } layoutToolbar(); } },
     { id: 'focus', label: 'Focus mode (hide panels)', group: 'View', shortcut: 'Backslash', run: () => toggleFocusMode() },
     { id: 'group', label: 'Group selected parts', group: 'Edit', shortcut: 'Ctrl+G', run: () => editor.groupSelection(), enabled: () => editor.selection.length > 1 },
@@ -3231,7 +3277,7 @@ function registerMainContextActions() {
 window.addEventListener('paste', (e) => {
   if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return;
   const files = [...(e.clipboardData?.files || [])];
-  if (files.length) { e.preventDefault(); openFiles(files); return; }
+  if (files.length) { e.preventDefault(); if (qcIsOpen()) qcAdd(files); else openFiles(files); return; }
   const text = e.clipboardData?.getData('text')?.trim() || '';
   const urls = text.split(/\s+/).filter((u) => /^https?:\/\/\S+$/i.test(u));
   if (urls.length) { e.preventDefault(); openUrls(urls); }

@@ -5,6 +5,7 @@ const P: Record<string, string> = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   cube: '<path d="M12 2.5 3.5 7v10l8.5 4.5 8.5-4.5V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5v10"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
   more: '<path d="m6 7 5 5-5 5M13 7l5 5-5 5"/>',
   chev: '<path d="m7 10 5 5 5-5"/>',
