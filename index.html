@@ -26,28 +26,21 @@
         <a class="logo-by" href="https://bankasimedia.com" target="_blank" rel="noopener" title="Visit bankasimedia.com"><span class="logo-byword">by</span><span class="logo-bankasi">BANKASI</span><sup class="logo-sup">MEDIA</sup></a>
       </div>
 
+      <div class="file-actions" id="fileActions" role="group" aria-label="File">
+        <button class="tb" data-action="open" data-tip="Open files (O)" aria-label="Open files"><i data-icon="open"></i><span data-i18n="Open">Open</span></button>
+        <button class="tb" data-action="url" data-tip="Open from URL" aria-label="Open from URL"><i data-icon="link"></i></button>
+        <button class="tb" data-action="new" data-tip="New empty scene" aria-label="New empty scene"><i data-icon="plus"></i></button>
+      </div>
+
       <div class="model-bar hidden" id="modelBar">
         <div class="doc-tabs hidden" id="docTabs" role="tablist" aria-label="Open models"></div>
         <span class="mb-name" id="mbName"></span>
         <span class="mb-format" id="mbFormat"></span>
-        <span class="mb-dirty hidden" id="mbDirty" title="Unsaved changes" aria-label="Unsaved changes">●</span>
-        <button class="mb-unit" id="mbUnit" data-action="units" aria-label="File units">mm</button>
+        <button class="mb-dirty hidden" id="mbDirty" data-action="saveproj" data-tip="Unsaved changes: click to save a project (Ctrl+S)" aria-label="Unsaved changes. Save a project"><i data-icon="save"></i><span data-i18n="Unsaved">Unsaved</span></button>
       </div>
 
-      <div class="ctx-switch needs-model" id="ctxSwitch" role="radiogroup" aria-label="Show tools for">
-        <button role="radio" aria-checked="true" data-ctx="all" class="active" data-i18n="All">All</button>
-        <button role="radio" aria-checked="false" data-ctx="view" data-i18n="View">View</button>
-        <button role="radio" aria-checked="false" data-ctx="inspect" data-i18n="Inspect">Inspect</button>
-        <button role="radio" aria-checked="false" data-ctx="prepare" data-i18n="Prepare">Prepare</button>
-        <button role="radio" aria-checked="false" data-ctx="present" data-i18n="Present">Present</button>
-      </div>
 
       <nav class="toolbar" id="toolbar" aria-label="Tools">
-        <div class="tb-group" data-group="file" data-prio="0">
-          <button class="tb" data-action="open" data-tip="Open files (O)" aria-label="Open files"><i data-icon="open"></i><span data-i18n="Open">Open</span></button>
-          <button class="tb" data-action="url" data-tip="Open from URL" aria-label="Open from URL"><i data-icon="link"></i></button>
-          <button class="tb" data-action="new" data-tip="New empty scene" aria-label="New empty scene"><i data-icon="plus"></i></button>
-        </div>
         <div class="tb-group needs-model" data-group="view" data-ctx="view inspect present" data-prio="1">
           <button class="tb" data-action="fit" data-tip="Fit to window (F)" aria-label="Fit to window"><i data-icon="fit"></i></button>
           <div class="dropdown">
@@ -136,10 +129,10 @@
           <button class="tb" data-action="undo" data-tip="Undo (Ctrl+Z)" aria-label="Undo"><i data-icon="undo"></i></button>
           <button class="tb" data-action="redo" data-tip="Redo (Ctrl+Y)" aria-label="Redo"><i data-icon="redo"></i></button>
         </div>
+        <button class="tb tb-overflow hidden" id="tbOverflow" aria-expanded="false" aria-controls="tbStrip" data-tip="Tools that don’t fit" aria-label="Show tools that don’t fit"><i data-icon="more"></i><span class="tb-overflow-count" id="tbOverflowCount"></span></button>
         <div class="dropdown tb-more-wrap">
           <button class="tb" data-menu="tools" data-tip="More tools" aria-label="More tools" aria-haspopup="menu"><i data-icon="tools"></i><span data-i18n="Tools">Tools</span><i data-icon="chev" class="chev"></i></button>
           <div class="menu" id="menu-tools" role="menu">
-            <div id="menu-overflow"></div>
             <div class="menu-label">Inspect</div>
             <button role="menuitem" data-tool="assets"><i data-icon="image"></i>Files &amp; textures</button>
             <button role="menuitem" data-tool="clash"><i data-icon="clash"></i>Clash check</button>
@@ -169,12 +162,15 @@
         </div>
       </nav>
 
+      <div class="tb-strip hidden" id="tbStrip" role="toolbar" aria-label="More tools"></div>
+
       <div class="top-right">
         <button class="tb tb-problems hidden" id="problemsBtn" data-action="problems" data-tip="Problems and warnings" aria-label="Problems and warnings"><i data-icon="warn"></i><span>0</span></button>
         <button class="tb" data-action="palette" data-tip="Search all tools (Ctrl+K)" aria-label="Search all tools"><i data-icon="search"></i></button>
         <button class="tb" data-action="theme" data-tip="Light / dark" aria-label="Light or dark theme"><i data-icon="sun"></i></button>
         <button class="tb" data-action="help" data-tip="Help & shortcuts (?)" aria-label="Help and shortcuts"><i data-icon="help"></i></button>
-        <button class="btn-export needs-model" data-action="export" data-tip="Export as another format (Ctrl+E)" aria-label="Export"><i data-icon="download"></i><span data-i18n="Export">Export</span></button>
+        <button class="tb tb-support" data-action="support" data-tip="Free, no ads: support the project" aria-label="Support the project"><i data-icon="heart"></i><span data-i18n="Support">Support</span></button>
+        <button class="btn-export needs-model" data-action="export" data-tip="Convert to another format (Ctrl+E)" aria-label="Convert to another format"><i data-icon="download"></i><span data-i18n="Convert">Convert</span></button>
       </div>
     </header>
 
@@ -206,7 +202,7 @@
             <div class="welcome-main">
               <!--hero-->
               <h1>Every 3D file.<br />One free <span class="glow">toolkit</span>.</h1>
-              <p class="lede">View, convert, scale, measure, paint and edit 3D models right in your browser. 30+ formats, no uploads, no ads, no sign-up.</p>
+              <p class="lede">Open and convert 44 file types, then measure, repair and edit, right in your browser. Nothing is uploaded. No ads, no sign-up.</p>
               <!--/hero-->
               <button class="drop-zone" id="dropZone" data-action="open">
                 <span class="card-label">[open]</span>
@@ -215,17 +211,16 @@
                 <span class="dz-btn" id="dzBtn" data-i18n="Open 3D files">Open 3D files</span>
                 <span class="dz-paste" data-i18n="or paste files with Ctrl+V">or paste files with Ctrl+V</span>
               </button>
-              <div class="cards">
-                <button class="card" data-action="url">
-                  <span class="card-label">From link</span>
-                  <span class="card-title">Open a model URL</span>
-                  <span class="card-arrow"><i data-icon="link"></i></span>
-                </button>
-                <button class="card" data-action="new">
-                  <span class="card-label">Build</span>
-                  <span class="card-title">Start an empty scene</span>
-                  <span class="card-arrow"><i data-icon="plus"></i></span>
-                </button>
+              <div class="tasks" role="group" aria-label="What do you want to do?">
+                <span class="tasks-label" data-i18n="What do you want to do?">What do you want to do?</span>
+                <button class="task task-primary" data-action="convertfile"><i data-icon="swap"></i><span data-i18n="Convert a file">Convert a file</span></button>
+                <button class="task" data-intent="measure"><i data-icon="ruler"></i><span data-i18n="View &amp; measure">View &amp; measure</span></button>
+                <button class="task" data-intent="repair"><i data-icon="repair"></i><span data-i18n="Prepare a print">Prepare a print</span></button>
+                <button class="task" data-action="batch"><i data-icon="batch"></i><span data-i18n="Convert many">Convert many</span></button>
+                <button class="task" data-action="starttext"><i data-icon="text"></i><span data-i18n="3D text">3D text</span></button>
+                <button class="task" data-action="url"><i data-icon="link"></i><span data-i18n="Open a link">Open a link</span></button>
+                <button class="task" data-action="new"><i data-icon="plus"></i><span data-i18n="Empty scene">Empty scene</span></button>
+                <button class="task task-ghost" data-action="formats"><i data-icon="list"></i><span data-i18n="Which files work?">Which files work?</span></button>
               </div>
               <p class="trust"><span data-i18n="Models are processed in your browser. No ads, no account.">Models are processed in your browser. No ads, no account.</span> <button class="link-btn" data-action="storagehelp" data-i18n="How files and local storage work">How files and local storage work</button></p>
               <div class="recent hidden" id="recentList"></div>
@@ -245,9 +240,9 @@
               <i data-icon="heart"></i>
               <div>
                 <strong>Completely free. No ads. Open source.</strong>
-                <span>To support hosting and development, donations are welcome.</span>
+                <span>No ads, no accounts, no tracking. If it saves you time, you can help keep it that way.</span>
               </div>
-              <button class="btn-outline small" data-action="support">About</button>
+              <button class="btn-outline small" data-action="support"><i data-icon="heart"></i><span data-i18n="Support">Support</span></button>
             </div>
           </div>
         </div>

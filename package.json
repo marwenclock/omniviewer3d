@@ -16,6 +16,7 @@
   "type": "module",
   "dependencies": {
     "@mkkellogg/gaussian-splats-3d": "^0.4.7",
+    "draco3d": "^1.5.7",
     "fflate": "^0.8.3",
     "geist": "^1.9.2",
     "gifenc": "^1.0.3",

@@ -55,6 +55,8 @@ if (Resvg) {
 
 writeFileSync(join(dist, 'sitemap.xml'), sitemap());
 writeFileSync(join(dist, 'robots.txt'), robots());
+// IndexNow (Bing, Yandex, Seznam, Naver): the key file proves ownership; scripts/indexnow.mjs submits URLs.
+if (process.env.INDEXNOW_KEY && /^[a-zA-Z0-9-]{8,128}$/.test(process.env.INDEXNOW_KEY)) writeFileSync(join(dist, `${process.env.INDEXNOW_KEY}.txt`), process.env.INDEXNOW_KEY);
 writeFileSync(join(dist, '.nojekyll'), '');
 
 // 404: Cloudflare serves it at ANY path, so assets must resolve from the site root (CA-01), and it must say what

@@ -10,7 +10,7 @@ import { Editor, type Primitive, type GizmoMode } from './editor';
 import { MeasureTool } from './tools/measure';
 import { PaintTool } from './tools/paint';
 import { computeStats, checkClosedAsync, UNITS, type Unit, fmtLen, fmtNum, fmtInt, type ModelStats } from './stats';
-import { EXPORT_FORMATS, exportModel, download, describeExport, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
+import { EXPORT_FORMATS, exportModel, download, describeExport, exportBlocker, staysYUp, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
 import { icon, hydrateIcons } from './icons';
 import { CONFIG } from './config';
 import { panels, commands, registerCommand } from './registry';
@@ -26,6 +26,7 @@ import { cameraString, applyCamera, savedViewsFor, restoreSavedViews } from './f
 import { LOOKS, currentLook, setLook, BACKDROPS, setBackdrop, setShadow, shadowEnabled, envBackground, setEnvBackground } from './features/look';
 import { CAD_QUALITY, cadQuality } from './cad';
 import { helpArticlesHtml, releaseNotesHtml } from './features/docs';
+import { ProprietaryFormatError, PROPRIETARY, extractPreview, type ProprietaryInfo } from './formats-extra';
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -163,6 +164,8 @@ const state = {
   forceCost: false,
   /** model identity for saved views / projects (name + size + triangle count) */
   identity: '',
+  /** last export of this scene: label, time and whether it kept everything (save semantics, D01) */
+  lastExport: null as null | { label: string; at: number; complete: boolean },
   modelName: '',
   ext: '',
   lastFiles: null as File[] | null,
@@ -194,7 +197,7 @@ const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
 // ------------------------------------------------------------------ static UI setup
 /** Set by the landing page (format viewer, converter or tool page) the visitor arrived on. */
-interface PageConfig { kind?: 'viewer' | 'convert' | 'tool'; from?: string; to?: ExportId; tool?: string }
+interface PageConfig { kind?: 'viewer' | 'convert' | 'tool' | 'guide'; from?: string; to?: ExportId; tool?: string }
 let PAGE: PageConfig = {};
 try { PAGE = JSON.parse($('#page-config')?.textContent || '{}'); } catch { /* defaults */ }
 $('#year').textContent = String(new Date().getFullYear());
@@ -226,10 +229,11 @@ async function confirmDiscard(): Promise<boolean> {
   if (!viewer.model || !history.dirty) return true;
   return new Promise((resolve) => {
     openModal(`<h2 id="dlgTitle">${t('You have unsaved changes')}</h2>
-      <p>${esc(state.modelName || 'This scene')} has changes that are not exported yet. Opening something else will replace it.</p>
+      <p>${esc(state.modelName || 'This scene')} has changes that are not saved${state.lastExport && !state.lastExport.complete ? ` (your ${esc(state.lastExport.label)} export doesn’t keep everything)` : ''}. Opening something else will replace it. A project file (.omniproj) keeps every part, colour, measurement and view.</p>
       <div class="modal-actions">
         <button class="btn-outline" data-dc="keep">${t('Keep editing')}</button>
-        <button class="btn-outline" data-dc="export">${t('Export changes')}</button>
+        <button class="btn-outline" data-dc="project">${t('Save project')}</button>
+        <button class="btn-outline" data-dc="export">${t('Export a copy')}</button>
         <button class="btn-solid danger" data-dc="discard">${t('Discard changes')}</button>
       </div>`);
     let done = false;
@@ -240,6 +244,7 @@ async function confirmDiscard(): Promise<boolean> {
       const c = b.dataset.dc;
       if (c === 'discard') { modal.close(); finish(true); }
       else if (c === 'export') { finish(false); showExportDialog(); }
+      else if (c === 'project') { modal.close(); finish(false); saveProject(); }
       else { modal.close(); finish(false); }
     };
     modal.addEventListener('close', () => finish(false), { once: true });
@@ -302,6 +307,10 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
       toast(`${t('Opened with warnings')}: ${res.warnings.length}`, true);
     } else toast(`${t('Opened')} ${state.modelName}`);
     applyPageIntent();
+    if (pendingIntent) {
+      const i = pendingIntent; pendingIntent = null;
+      if (i === 'convert') setTimeout(() => showExportDialog(), 300); else applyIntent(i);
+    }
     if (state.tool === 'none' && state.caps.isToolpath) setTool('gcode');
     maybeShowTips();
     if (res.object.userData.splatCount) {
@@ -311,6 +320,7 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
     }
   } catch (err: any) {
     if (err?.name === 'AbortError') { if (owns()) toast(t('Stopped. Your previous model is unchanged.')); return; }
+    if (err instanceof ProprietaryFormatError) { pendingIntent = null; if (owns()) showProprietaryDialog(err.info, err.file); return; }
     console.error(err);
     if (owns()) toast(err?.message || String(err), true);
   } finally {
@@ -542,7 +552,7 @@ function reasonFor(el: HTMLElement): string | null {
   return unavailableReason(viewer.model ? state.caps : null, need);
 }
 function updateToolbar() {
-  $$<HTMLElement>('#toolbar button, #menu-tools button, #mobileBar button, .needs-model').forEach((b) => {
+  $$<HTMLElement>('#toolbar button, #tbStrip button, #menu-tools button, #mobileBar button, .needs-model').forEach((b) => {
     const why = reasonFor(b);
     b.toggleAttribute('aria-disabled', !!why);
     if (why) b.setAttribute('aria-disabled', 'true');
@@ -551,6 +561,8 @@ function updateToolbar() {
   });
   $$('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === state.tool));
   $$('[data-gizmo]').forEach((b) => b.classList.toggle('active', b.dataset.gizmo === editor.gizmo));
+  // A tool that is on but sits in the overflow strip: mark the » button so it isn't forgotten.
+  $('#tbOverflow').classList.toggle('has-active', !!$('#tbStrip').querySelector('.tb.active'));
   $$('[data-display]').forEach((b) => b.classList.toggle('checked', b.dataset.display === viewer.displayMode));
   $$('[data-projection]').forEach((b) => b.classList.toggle('checked', (b.dataset.projection === 'orthographic') === (viewer.camera === viewer.ortho)));
   const toggles: Record<string, boolean> = { edges: viewer.showEdges, grid: viewer.showGrid, axes: viewer.showAxes, autorotate: viewer.controls.autoRotate };
@@ -657,8 +669,19 @@ function runAction(a: string) {
     case 'recipes': showRecipes(); break;
     case 'storagehelp': showHelpCentre('storage'); break;
     case 'sample': openSample(); break;
+    case 'convertfile': pendingIntent = 'convert'; ($('#fileInput') as HTMLInputElement).click(); break;
+    case 'formats': showFormatsDialog(); break;
   }
 }
+
+/** A task picked on the welcome screen before any file is open: applied once the file has loaded. */
+let pendingIntent: string | null = null;
+document.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-intent]');
+  if (!b) return;
+  pendingIntent = b.dataset.intent!;
+  ($('#fileInput') as HTMLInputElement).click();
+});
 
 // tooltips
 const tip = $('#tooltip');
@@ -684,40 +707,71 @@ function setWorkspace(c: string) {
 }
 
 // ------------------------------------------------------------------ toolbar overflow (OV-031)
-/** Groups that don't fit move into the labelled Tools menu instead of an invisible sideways scroll. */
+/**
+ * Groups that don't fit move into a strip that drops down under the toolbar (like a slicer's overflow), opened by
+ * the » button. The groups themselves move, so active states, menus and disabled states keep working. The Tools
+ * menu button always stays visible.
+ */
+const TB_ORDER = [...document.querySelectorAll<HTMLElement>('#toolbar > .tb-group')];
 function layoutToolbar() {
   const bar = $('#toolbar');
-  const groups = $$<HTMLElement>('#toolbar > .tb-group');
+  const strip = $('#tbStrip');
+  const more = $('#tbOverflow');
   const ctx = document.body.dataset.ctx || 'all';
-  const overflow = $('#menu-overflow');
-  overflow.innerHTML = '';
-  groups.forEach((g) => { g.classList.remove('overflowed'); g.hidden = false; });
+  // Put every group back in its original place before measuring.
+  for (const g of TB_ORDER) { bar.insertBefore(g, more); g.classList.remove('overflowed'); g.hidden = false; }
+  more.classList.add('hidden');
   // Workspace filter: groups tagged with other workspaces are hidden.
-  for (const g of groups) { const tags = g.dataset.ctx; if (ctx !== 'all' && tags && !tags.split(' ').includes(ctx)) g.hidden = true; }
-  const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
-  // First drop the text labels (icons keep their names and tooltips), then move whole groups into the menu.
+  for (const g of TB_ORDER) { const tags = g.dataset.ctx; if (ctx !== 'all' && tags && !tags.split(' ').includes(ctx)) g.hidden = true; }
+  const fits = () => bar.scrollWidth <= bar.clientWidth;
+  // First drop the text labels (icons keep their names and tooltips), then move whole groups into the strip,
+  // lowest priority first. File and Undo/Redo go last, and only when nothing else is left.
   bar.classList.remove('tb-compact');
   if (!fits()) bar.classList.add('tb-compact');
-  const byPrio = groups.filter((g) => !g.hidden).sort((a, b) => Number(b.dataset.prio || 0) - Number(a.dataset.prio || 0));
+  const byPrio = TB_ORDER.filter((g) => !g.hidden).sort((a, b) => Number(b.dataset.prio || 0) - Number(a.dataset.prio || 0) || TB_ORDER.indexOf(b) - TB_ORDER.indexOf(a));
   for (const g of byPrio) {
     if (fits()) break;
-    if (Number(g.dataset.prio || 0) === 0) continue;
     g.classList.add('overflowed'); g.hidden = true;
+    more.classList.remove('hidden'); // the » button needs room too
   }
-  const moved = groups.filter((g) => g.classList.contains('overflowed'));
-  if (moved.length) {
-    overflow.innerHTML = moved.map((g) => [...g.querySelectorAll<HTMLElement>(':scope > button.tb')].map((b) => {
-      const label = (b.dataset.tipEn || b.dataset.tip || b.getAttribute('aria-label') || '').replace(/\s*\(.*\)$/, '');
-      const attrs = ['data-tool', 'data-action', 'data-gizmo'].map((a) => (b.hasAttribute(a) ? `${a}="${b.getAttribute(a)}"` : '')).join(' ');
-      return `<button role="menuitem" ${attrs}>${b.querySelector('svg')?.outerHTML || ''}${esc(t(label))}</button>`;
-    }).join('')).join('') + '<div class="menu-sep"></div>';
-  }
+  const moved = TB_ORDER.filter((g) => g.classList.contains('overflowed'));
+  for (const g of moved) { g.hidden = false; strip.appendChild(g); }
+  $('#tbOverflowCount').textContent = moved.length ? String(moved.reduce((n, g) => n + g.querySelectorAll(':scope > .tb, :scope > .dropdown > .tb').length, 0)) : '';
+  if (!moved.length) closeToolStrip(); else if (!strip.classList.contains('hidden')) placeToolStrip();
 }
+function placeToolStrip() {
+  const strip = $('#tbStrip'), r = $('#tbOverflow').getBoundingClientRect();
+  strip.style.top = `${$('#topbar').getBoundingClientRect().bottom + 6}px`;
+  strip.style.left = `${Math.max(8, Math.min(r.right - strip.offsetWidth, window.innerWidth - strip.offsetWidth - 8))}px`;
+}
+function openToolStrip() {
+  closeMenus();
+  $('#tbStrip').classList.remove('hidden');
+  $('#tbOverflow').setAttribute('aria-expanded', 'true');
+  $('#tbOverflow').classList.add('active');
+  placeToolStrip();
+}
+function closeToolStrip() {
+  $('#tbStrip').classList.add('hidden');
+  $('#tbOverflow').setAttribute('aria-expanded', 'false');
+  $('#tbOverflow').classList.remove('active');
+}
+$('#tbOverflow').addEventListener('click', (e) => { e.stopPropagation(); if ($('#tbStrip').classList.contains('hidden')) openToolStrip(); else closeToolStrip(); });
+// Close on a click outside (menus opened from the strip count as inside), after using a tool, or with Escape.
+document.addEventListener('click', (e) => {
+  const strip = $('#tbStrip');
+  if (strip.classList.contains('hidden')) return;
+  const t = e.target as HTMLElement;
+  if (t.closest('#tbOverflow') || t.closest('.menu')) return;
+  if (t.closest('#tbStrip')) { if (!t.closest('[data-menu]')) setTimeout(closeToolStrip, 0); return; }
+  closeToolStrip();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#tbStrip').classList.contains('hidden')) { closeToolStrip(); ($('#tbOverflow') as HTMLElement).focus(); } });
 window.addEventListener('resize', () => { layoutToolbar(); requestAnimationFrame(layoutToolbar); });
 // Re-check whenever anything in the header changes width (model name, tabs, unit chip, fonts loading).
 let toolbarRaf = 0;
 const headerObserver = new ResizeObserver(() => { cancelAnimationFrame(toolbarRaf); layoutToolbar(); toolbarRaf = requestAnimationFrame(layoutToolbar); });
-['#modelBar', '.brand', '.top-right', '#ctxSwitch'].forEach((sel) => { const el = document.querySelector(sel); if (el) headerObserver.observe(el); });
+['#modelBar', '.brand', '.top-right', '#fileActions'].forEach((sel) => { const el = document.querySelector(sel); if (el) headerObserver.observe(el); });
 document.fonts?.ready.then(() => layoutToolbar());
 
 // ------------------------------------------------------------------ route-specific primary action (OV-044)
@@ -728,6 +782,7 @@ function applyPagePrimary() {
   const set = (ti: string, bt?: string, vars?: Record<string, string>) => { title.textContent = t(ti, vars); if (bt) btn.textContent = t(bt, vars); };
   if (PAGE.kind === 'convert' && PAGE.to) set('Choose a {from} file to convert to {to}', 'Open {from} file', { from, to: PAGE.to.toUpperCase() });
   else if (PAGE.kind === 'viewer' && from) set('Drop a {from} file to view it', 'Open {from} file', { from });
+  else if (PAGE.kind === 'guide' && from) set('Drop a {from} file to see its preview and export steps', 'Choose {from} file', { from });
   else if (PAGE.tool === 'text') { set('Create 3D text', 'Start typing'); zone.dataset.action = 'starttext'; }
   else if (PAGE.tool === 'svg') { set('Choose an SVG logo to extrude', 'Choose SVG'); zone.dataset.action = 'startsvg'; }
   else if (PAGE.tool === 'compare') set('Open model A, then add model B', 'Open model A');
@@ -1166,10 +1221,6 @@ function updateModelBar() {
   $('#mbName').title = state.modelName;
   $('#mbFormat').textContent = ext;
   $('#mbDirty').classList.toggle('hidden', !history.dirty);
-  const unit = $('#mbUnit');
-  unit.textContent = state.displayUnit === 'auto' || state.displayUnit === state.unit ? UNITS[state.unit].short : `${UNITS[state.unit].short} → ${UNITS[dispUnit()].short}`;
-  unit.title = `File units: ${UNITS[state.unit].label} (${t(UNIT_SOURCE_LABEL[state.unitSource])}). Click to change.`;
-  unit.classList.toggle('warn', state.unitSource === 'guess' || state.unit === 'u');
 }
 function updateBadges() {
   const host = document.getElementById('badges');
@@ -2141,7 +2192,7 @@ function exportTarget(scope: ExportScope | 'selected', part: THREE.Object3D | nu
   return { root: viewer.model, scope: scope === 'selected' ? 'visible' : scope };
 }
 
-interface ExportChoice { id: ExportId; scope: ExportScope | 'selected'; zUp: boolean; outUnit?: UnitId; name?: string; perTriangleColors?: boolean; part?: THREE.Object3D | null }
+interface ExportChoice { id: ExportId; scope: ExportScope | 'selected'; zUp: boolean; outUnit?: UnitId; name?: string; perTriangleColors?: boolean; part?: THREE.Object3D | null; ext?: string }
 
 async function runExport(id: ExportId, part: THREE.Object3D | null = null, zUp = viewer.upAxis === 'y' && isPrintFormat(id), choice: Partial<ExportChoice> = {}) {
   const f = formatById(id);
@@ -2155,8 +2206,13 @@ async function runExport(id: ExportId, part: THREE.Object3D | null = null, zUp =
       unit: state.unit as UnitId, zUp, scope: tgt.scope, outUnit: choice.outUnit, perTriangleColors: choice.perTriangleColors,
     });
     const name = safeFileName(choice.name || `${baseFileName()}${part ? '-' + safeFileName(part.name || 'part') : ''}`);
-    download(blob, `${name}.${f.ext}`);
-    history.markClean(); // the changes are now saved in a file (OV-003)
+    download(blob, `${name}.${choice.ext && [f.ext, ...((f as any).alias ?? [])].includes(choice.ext) ? choice.ext : f.ext}`);
+    // Only a complete, lossless export counts as "saved". A lossy or partial one (STL drops colours and parts,
+    // selected-only drops the rest) keeps the unsaved marker, so closing still offers to save a project (D01).
+    const rep = describeExport(tgt.root ?? viewer.model!, id, { unit: state.unit as UnitId, up: viewer.upAxis, zUp, scope: tgt.scope, outUnit: choice.outUnit, perTriangleColors: choice.perTriangleColors });
+    const complete = !part && !tgt.tempGroup && rep.lost.length === 0 && rep.hiddenParts === 0 && measure.serialize().length === 0;
+    state.lastExport = { label: f.label, at: Date.now(), complete };
+    if (complete) history.markClean();
     updateStatus();
     toast(`${t('Exported')} ${f.label}`);
   } catch (err: any) {
@@ -2166,6 +2222,29 @@ async function runExport(id: ExportId, part: THREE.Object3D | null = null, zUp =
 }
 
 const autoKey = (id: string) => 'auto.' + id;
+const GROUP_LABEL = { print: '3D printing', web: 'Web, AR & games', apps: '3D apps', cad: 'CAD & drawings', data: 'Scans, points & research' } as const;
+/** Search text typed in the converter (kept while the dialog re-renders and between opens). */
+let convQuery = '';
+/** Three sensible targets for what is open now: by content (points, animation, textures) and by source format. */
+function recommendedTargets(): ExportId[] {
+  const c = state.caps, ext = state.ext;
+  let textured = false;
+  viewer.model?.traverse((o: any) => { const m = o.material; for (const x of Array.isArray(m) ? m : [m]) if (x?.map) textured = true; });
+  let r: ExportId[];
+  if (c?.hasPoints && !c.hasMesh) r = ['ply', 'xyz', 'glb'];
+  else if (viewer.clips.length) r = ['glb', 'usdz', 'gltf'];
+  else if (['step', 'stp', 'iges', 'igs', 'brep', 'brp', '3dm', 'x_t', 'dxf'].includes(ext)) r = ['stl', '3mf', 'glb'];
+  else if (['stl', '3mf', 'amf', 'obj', 'off'].includes(ext)) r = [ext === 'stl' ? '3mf' : 'stl', 'glb', 'obj'];
+  else if (['ifc'].includes(ext)) r = ['glb', 'obj-zip', 'usdz'];
+  else if (textured) r = ['glb', 'obj-zip', 'usdz'];
+  else r = ['glb', 'stl', 'obj'];
+  const last = store.get('lastExport', '') as ExportId;
+  if (last && EXPORT_FORMATS.some((f) => f.id === last) && !r.includes(last)) r = [last, ...r.slice(0, 2)];
+  // Never suggest converting a file to its own format.
+  const same = (id: ExportId) => formatById(id).ext === ext;
+  const ok = (id: ExportId) => !same(id) && !(viewer.model && exportBlocker(viewer.model, id));
+  return r.filter(ok).concat((['glb', 'stl', 'obj', '3mf', 'ply', 'xyz'] as ExportId[]).filter((id) => ok(id) && !r.includes(id))).slice(0, 3);
+}
 /**
  * Export with a preflight (OV-016): choose format, scope and units, and see what is kept and lost for THIS model
  * before downloading. Converter pages preselect their format; a remembered auto-download still stops when the new
@@ -2178,6 +2257,8 @@ function showExportDialog(preferred?: ExportId, partOverride?: THREE.Object3D, i
   const hasSel = editor.selection.some((o) => o !== viewer.model);
   const ch: ExportChoice = { id: preferred ?? (store.get('lastExport', 'glb') as ExportId), scope: partOverride ? 'visible' : (hasSel && initialScope === 'selected' ? 'selected' : initialScope), zUp: viewer.upAxis === 'y', part: partOverride ?? null, name: '', perTriangleColors: true };
   if (!EXPORT_FORMATS.some((f) => f.id === ch.id)) ch.id = 'glb';
+  // Converting to the same format is rarely the goal: start on the best suggestion instead.
+  if (!preferred && formatById(ch.id).ext === state.ext) ch.id = recommendedTargets()[0] ?? 'glb';
   const formats = preferred ? [...EXPORT_FORMATS].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred)) : [...EXPORT_FORMATS];
   const render = () => {
     const f = formatById(ch.id);
@@ -2190,9 +2271,24 @@ function showExportDialog(preferred?: ExportId, partOverride?: THREE.Object3D, i
     const sizeTxt = su === null ? '' : `${fmtNum(conv(rep.size.x), 3)} × ${fmtNum(conv(rep.size.y), 3)} × ${fmtNum(conv(rep.size.z), 3)} ${su === 'u' ? 'units' : UNITS[su as Unit].short}`;
     const unitless = isUnitless(ch.id);
     const defaultOut = outputUnit(ch.id, { unit: state.unit as UnitId });
-    return `<h2 id="dlgTitle">${t('Export as another format')}</h2>
+    const blockedWhy = (x: (typeof EXPORT_FORMATS)[number]) => (viewer.model ? exportBlocker(viewer.model, x.id) : null);
+    const exts = (x: (typeof EXPORT_FORMATS)[number]) => [x.ext, ...(((x as any).alias as string[] | undefined) ?? [])];
+    const opt = (x: (typeof EXPORT_FORMATS)[number], inRec = false) => { const why = blockedWhy(x); return `<button class="export-opt ${x.id === ch.id ? 'preferred' : ''} ${why ? 'is-blocked' : ''}" role="radio" aria-checked="${x.id === ch.id}" data-export="${x.id}" ${why ? `title="${esc(why)}"` : ''} ${inRec ? 'data-rec' : `data-s="${esc(`${x.label} ${exts(x).join(' ')} ${x.tags} ${x.note} ${GROUP_LABEL[x.group]}`.toLowerCase())}"`}><div><b>${x.label}</b><small>${why ? esc(why) : x.note}</small></div><span class="ext">${exts(x).map((e) => '.' + e).join(' ')}</span></button>`; };
+    const blocked = blockedWhy(f);
+    const extNow = ch.ext && exts(f).includes(ch.ext) ? ch.ext : f.ext;
+    const recs = recommendedTargets();
+    return `<h2 id="dlgTitle">${t('Convert to…')}</h2>
+      <p class="conv-from">${esc(state.modelName)} <span class="muted">· ${esc((state.ext || '').toUpperCase())}${state.stats ? ` · ${fmtNum(state.stats.triangles, 0)} triangles` : ''}</span></p>
       <div class="export-layout">
-        <div class="export-grid" role="radiogroup" aria-label="Format">${formats.map((x) => `<button class="export-opt ${x.id === ch.id ? 'preferred' : ''}" role="radio" aria-checked="${x.id === ch.id}" data-export="${x.id}"><div><b>${x.label}</b><small>${x.note}</small></div><span class="ext">.${x.ext}</span></button>`).join('')}</div>
+        <div class="conv-pick">
+          <label class="conv-search">${icon('search')}<input id="expSearch" type="search" autocomplete="off" spellcheck="false" placeholder="${t('Search formats or apps: print, Blender, iPhone…')}" aria-label="${t('Search formats')}" value="${esc(convQuery)}"/></label>
+          <div class="export-grid conv-list" role="radiogroup" aria-label="Format">
+            <div class="conv-sec" data-sec="rec">${t('Best for this model')}</div>
+            ${recs.map((id) => opt(formatById(id), true)).join('')}
+            ${(Object.keys(GROUP_LABEL) as (keyof typeof GROUP_LABEL)[]).map((g) => `<div class="conv-sec" data-sec="${g}">${t(GROUP_LABEL[g])}</div>${formats.filter((x) => x.group === g).map((x) => opt(x)).join('')}`).join('')}
+            <p class="conv-none hidden">${t('No format matches. Try “print”, “web”, “AR” or a program name.')}</p>
+          </div>
+        </div>
         <div class="export-pre">
           <div class="field-label">${t('What to export')}</div>
           <div class="seg" role="radiogroup">
@@ -2208,25 +2304,73 @@ function showExportDialog(preferred?: ExportId, partOverride?: THREE.Object3D, i
           </dl>
           ${unitless ? `<div class="row"><label for="expUnit">${t('Numbers in the file')}</label><select id="expUnit">${(['mm', 'cm', 'm', 'in'] as UnitId[]).map((u) => `<option value="${u}" ${(ch.outUnit ?? defaultOut) === u ? 'selected' : ''}>${UNITS[u as Unit].label}</option>`).join('')}</select></div>
             <p class="note">${f.label.split(' ')[0]} files don't store units. Slicers assume millimetres.</p>` : ''}
-          ${viewer.upAxis === 'y' && f.convention !== 'metres-y' ? `<label class="check"><input type="checkbox" id="exportZup" ${ch.zUp ? 'checked' : ''}/> ${t('Stand upright for 3D printing (Z-up)')}</label>` : ''}
+          ${viewer.upAxis === 'y' && f.convention !== 'metres-y' && !staysYUp(ch.id) ? `<label class="check"><input type="checkbox" id="exportZup" ${ch.zUp ? 'checked' : ''}/> ${t('Stand upright for 3D printing (Z-up)')}</label>` : ''}
           ${ch.id === '3mf' && state.stats && collectHasVertexColors() ? `<label class="check"><input type="checkbox" id="expTriColors" ${ch.perTriangleColors ? 'checked' : ''}/> Keep painted colours per triangle (supported by some slicers)</label>` : ''}
           <div class="export-loss">
             <div><b>${t('Kept')}</b><ul>${rep.kept.map((k) => `<li>${esc(k)}</li>`).join('')}</ul></div>
             ${rep.lost.length ? `<div class="lost"><b>${t('Lost')}</b><ul>${rep.lost.map((k) => `<li>${esc(k)}</li>`).join('')}</ul></div>` : ''}
           </div>
           ${rep.warnings.map((w) => `<p class="note warn-note">${esc(w)}</p>`).join('')}
-          <div class="row"><label for="expName">${t('File name')}</label><input type="text" id="expName" value="${esc(ch.name || (ch.part ? `${baseFileName()}-${safeFileName(ch.part.name || 'part')}` : baseFileName()))}"/><span class="cost-unit">.${f.ext}</span></div>
+          <div class="row"><label for="expName">${t('File name')}</label><input type="text" id="expName" value="${esc(ch.name || (ch.part ? `${baseFileName()}-${safeFileName(ch.part.name || 'part')}` : baseFileName()))}"/>${exts(f).length > 1 ? `<select id="expExt" aria-label="${t('File extension')}">${exts(f).map((e) => `<option value="${e}" ${e === extNow ? 'selected' : ''}>.${e}</option>`).join('')}</select>` : `<span class="cost-unit">.${f.ext}</span>`}</div>
+          ${blocked ? `<p class="note warn-note">${esc(blocked)}</p>` : ''}
           ${preferred ? `<label class="check"><input type="checkbox" id="exportAuto" ${store.get(autoKey(preferred), '') ? 'checked' : ''}/> On this page, download straight away next time (still stops if something would be lost)</label>` : ''}
-          <div class="modal-actions"><button class="btn-outline" data-modal-close>${t('Cancel')}</button><button class="btn-solid" id="expGo">${icon('download')} ${t('Download')} .${f.ext}</button></div>
+          <div class="modal-actions"><button class="btn-outline" data-modal-close>${t('Cancel')}</button><button class="btn-solid" id="expGo" ${blocked ? 'disabled' : ''}>${icon('download')} ${t('Download')} .${extNow}</button></div>
         </div>
       </div>`;
   };
+  const hook = () => {
+    const input = $('#expSearch') as HTMLInputElement;
+    const list = $('#modalCard').querySelector<HTMLElement>('.conv-list')!;
+    const filter = () => {
+      convQuery = input.value;
+      const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      list.querySelectorAll<HTMLElement>('[data-s]').forEach((b) => { const hit = words.every((w) => b.dataset.s!.includes(w)); b.classList.toggle('hidden', !hit); if (hit) shown++; });
+      list.querySelectorAll<HTMLElement>('[data-rec]').forEach((b) => b.classList.toggle('hidden', words.length > 0));
+      list.querySelectorAll<HTMLElement>('.conv-sec').forEach((h) => {
+        if (h.dataset.sec === 'rec') { h.classList.toggle('hidden', words.length > 0); return; }
+        let n = h.nextElementSibling as HTMLElement | null, any = false;
+        while (n && !n.classList.contains('conv-sec') && !n.classList.contains('conv-none')) { if (!n.classList.contains('hidden')) any = true; n = n.nextElementSibling as HTMLElement | null; }
+        h.classList.toggle('hidden', !any);
+      });
+      const none = list.querySelector<HTMLElement>('.conv-none')!;
+      none.classList.toggle('hidden', shown > 0);
+      none.textContent = /laser|cnc|svg|outline|2d|cutter|router|plasma/.test(input.value.toLowerCase())
+        ? t('For laser cutting and CNC, use Tools → Cut / split → Save SVG or DXF: it exports the 2D section outline at real size.')
+        : t('No format matches. Try “print”, “web”, “AR” or a program name.');
+    };
+    input.oninput = filter;
+    input.onkeydown = (e) => {
+      const first = [...list.querySelectorAll<HTMLElement>('.export-opt')].find((b) => !b.classList.contains('hidden'));
+      if (e.key === 'Enter' && first) { e.preventDefault(); first.click(); }
+      if (e.key === 'ArrowDown' && first) { e.preventDefault(); first.focus(); }
+    };
+    list.onkeydown = (e) => {
+      const opts = [...list.querySelectorAll<HTMLElement>('.export-opt')].filter((b) => !b.classList.contains('hidden'));
+      const i = opts.indexOf(document.activeElement as HTMLElement);
+      if (i < 0) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); opts[Math.min(i + 1, opts.length - 1)].focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); if (i === 0) input.focus(); else opts[i - 1].focus(); }
+    };
+    filter();
+    list.scrollTop = listScroll;
+  };
+  let listScroll = 0;
   openModal(render());
-  const rerender = () => { const name = ($('#expName') as HTMLInputElement | null)?.value; if (name !== undefined) ch.name = name; $('#modalCard').innerHTML = `<button class="modal-close" data-modal-close aria-label="${t('Close')}">${icon('x')}</button>${render()}`; };
+  hook();
+  setTimeout(() => ($('#expSearch') as HTMLInputElement | null)?.focus(), 60);
+  const rerender = () => {
+    const name = ($('#expName') as HTMLInputElement | null)?.value; if (name !== undefined) ch.name = name;
+    listScroll = $('#modalCard').querySelector<HTMLElement>('.conv-list')?.scrollTop ?? 0;
+    const focusId = (document.activeElement as HTMLElement | null)?.dataset?.export;
+    $('#modalCard').innerHTML = `<button class="modal-close" data-modal-close aria-label="${t('Close')}">${icon('x')}</button>${render()}`;
+    hook();
+    if (focusId) $('#modalCard').querySelector<HTMLElement>(`.export-opt[data-export="${focusId}"]:not(.hidden)`)?.focus();
+  };
   $('#modalCard').onclick = async (e) => {
     const tEl = e.target as HTMLElement;
     const fmt = tEl.closest<HTMLElement>('[data-export]');
-    if (fmt) { ch.id = fmt.dataset.export as ExportId; ch.outUnit = undefined; rerender(); return; }
+    if (fmt) { ch.id = fmt.dataset.export as ExportId; ch.outUnit = undefined; ch.ext = undefined; rerender(); return; }
     const sc = tEl.closest<HTMLElement>('[data-scope]');
     if (sc) { ch.scope = sc.dataset.scope as ExportChoice['scope']; rerender(); return; }
     if (tEl.closest('#expGo')) {
@@ -2234,12 +2378,13 @@ function showExportDialog(preferred?: ExportId, partOverride?: THREE.Object3D, i
       if (preferred) store.set(autoKey(preferred), ($('#exportAuto') as HTMLInputElement | null)?.checked ? '1' : '');
       store.set('lastExport', ch.id);
       modal.close();
-      await runExport(ch.id, ch.part ?? null, ch.zUp && (isPrintFormat(ch.id) || ['obj', 'obj-zip', 'ply'].includes(ch.id)), ch);
+      await runExport(ch.id, ch.part ?? null, ch.zUp && formatById(ch.id).convention !== 'metres-y' && !staysYUp(ch.id), ch);
     }
   };
   $('#modalCard').onchange = (e) => {
     const el = e.target as HTMLInputElement;
     if (el.id === 'expUnit') { ch.outUnit = el.value as UnitId; rerender(); }
+    if (el.id === 'expExt') { ch.ext = el.value; rerender(); }
     if (el.id === 'exportZup') { ch.zUp = el.checked; rerender(); }
     if (el.id === 'expTriColors') { ch.perTriangleColors = el.checked; rerender(); }
   };
@@ -2352,16 +2497,75 @@ function showShareDialog() {
   };
 }
 
+/** Closed formats no browser can read (Fusion 360, SolidWorks, SketchUp...): show the preview inside, if any, and the export path. */
+async function showProprietaryDialog(info: ProprietaryInfo, file: File) {
+  const kindWord = { cad: 'CAD', dcc: '3D app', bim: 'BIM', drawing: 'drawing', sculpt: 'sculpting' }[info.kind];
+  openModal(`<h2 id="dlgTitle">${esc(info.app)} file</h2>
+    <div class="prop-layout">
+      <div class="prop-preview" id="propPreview"><span class="muted">${t('Looking for a preview inside the file…')}</span></div>
+      <div>
+        <p><b>${esc(file.name)}</b> <span class="muted">· ${file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(file.size / 1024)) + ' KB'} · .${esc(info.ext)}</span></p>
+        <p>${t('This is a closed {kind} format: only {app} (by {vendor}) can read its geometry. No browser tool can open it without uploading it to {vendor}, and OMNIVIEWER never uploads your files.', { kind: kindWord, app: info.app, vendor: info.vendor })}</p>
+        <div class="prop-steps">
+          <b>${t('Get a file that opens here')}</b>
+          <ol>
+            <li>${esc(info.how)}</li>
+            <li>${t('Best choice')}: <b>${esc(info.exportAs[0])}</b>${info.exportAs.length > 1 ? ` · ${t('also fine')}: ${info.exportAs.slice(1).map(esc).join(', ')}` : ''}</li>
+            <li>${t('Drop the exported file here. From there you can convert it to any of 44 file types.')}</li>
+          </ol>
+          ${info.freeRoute ? `<p class="note">${t('No {app}?', { app: esc(info.app) })} ${esc(info.freeRoute)}</p>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn-outline" data-act="formats">${t('Which files work?')}</button><button class="btn-solid" data-act="open">${icon('open')} ${t('Open the exported file')}</button></div>`);
+  $('#modalCard').onclick = (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (a === 'open') { modal.close(); ($('#fileInput') as HTMLInputElement).click(); }
+    if (a === 'formats') showFormatsDialog();
+  };
+  const url = await extractPreview(file).catch(() => null);
+  const host = document.getElementById('propPreview');
+  if (!host) return;
+  host.innerHTML = url ? `<img src="${url}" alt="${t('Preview stored inside {name}', { name: esc(file.name) })}"/><small class="muted">${t('Preview stored in the file (an image, not the 3D model)')}</small>` : `<span class="muted">${t('No preview picture inside this file.')}</span>`;
+}
+
+/** What opens, what converts, and what needs exporting first (format capability matrix). */
+function showFormatsDialog() {
+  const byKind: Record<string, ProprietaryInfo[]> = {};
+  for (const p of Object.values(PROPRIETARY)) (byKind[p.app] ??= []).push(p);
+  const prop = Object.entries(byKind).map(([app, list]) => `<li><b>${esc(app)}</b> <span class="muted">${list.map((p) => '.' + p.ext).join(' ')}</span> → ${esc(list[0].exportAs[0])}</li>`).join('');
+  openModal(`<h2 id="dlgTitle">${t('Which files work?')}</h2>
+    <input type="search" id="fmtSearch" class="fmt-search" placeholder="${t('Search an extension or program: f3d, blend, step…')}" aria-label="${t('Search formats')}"/>
+    <div class="fmt-cols" id="fmtCols">
+      <section><h3>${t('Opens directly')} <span class="muted">(${FORMATS.reduce((n, f) => n + f.ext.length, 0) - 1})</span></h3><ul>${FORMATS.map((f) => `<li data-s="${esc((f.name + ' ' + f.ext.join(' ')).toLowerCase())}"><b>${esc(f.name)}</b> <span class="muted">${f.ext.map((e) => '.' + e).join(' ')}</span></li>`).join('')}</ul>
+        <p class="note">${t('Files with a missing or wrong extension are recognised by their content.')}</p></section>
+      <section><h3>${t('Converts to')} <span class="muted">(${new Set(EXPORT_FORMATS.flatMap((f: any) => [f.ext, ...(f.alias ?? [])])).size})</span></h3><ul>${EXPORT_FORMATS.map((f) => `<li data-s="${esc((f.label + ' ' + f.ext + ' ' + f.tags).toLowerCase())}"><b>${esc(f.label)}</b> <span class="muted">.${f.ext}</span></li>`).join('')}</ul></section>
+      <section><h3>${t('Export these first')}</h3><p class="note">${t('Closed formats that only their own program can read. Drop one in and OMNIVIEWER shows how to export it, plus any preview picture stored inside.')}</p><ul>${prop.replace(/<li>/g, () => '<li data-s="">')}</ul></section>
+    </div>`);
+  const items = [...$('#fmtCols').querySelectorAll<HTMLElement>('li')];
+  items.forEach((li) => { if (!li.dataset.s) li.dataset.s = li.textContent!.toLowerCase(); });
+  ($('#fmtSearch') as HTMLInputElement).oninput = (e) => {
+    const q = (e.target as HTMLInputElement).value.toLowerCase().replace(/^\./, '').trim();
+    items.forEach((li) => li.classList.toggle('hidden', !!q && !li.dataset.s!.includes(q)));
+  };
+  setTimeout(() => ($('#fmtSearch') as HTMLInputElement | null)?.focus(), 60);
+}
+
 function showSupportDialog() {
   const has = !!CONFIG.donateUrl;
   openModal(`<h2 id="dlgTitle">About ${CONFIG.appName}</h2>
     <p>${CONFIG.appName} by ${CONFIG.brandName} ${CONFIG.brandSup} is free and open source. No ads, no accounts, no tracking. Models are processed in your browser and are never uploaded.</p>
     <p class="note">Version ${esc(APP_VERSION)} · <button class="link-btn" data-act="notes">What's new</button> · <button class="link-btn" data-act="help">Help centre</button> · <button class="link-btn" data-act="bug">Report a problem</button></p>
-    <p>If it helps you, you can support hosting and development:</p>
+    <div class="support-box">
+      <b>${icon('heart')} ${t('Keep it free')}</b>
+      <p>${t('Hosting, CAD engines and new formats cost time and money. Donations keep OMNIVIEWER free, ad-free and private for everyone.')}</p>
+      ${has ? `<a class="btn-solid" href="${CONFIG.donateUrl}" target="_blank" rel="noopener">${icon('heart')} ${esc(CONFIG.donateLabel)}</a>`
+        : `<button class="btn-solid" disabled title="${t('Donations are being set up')}">${icon('heart')} ${t('Donations coming soon')}</button>`}
+      <p class="note">${t('Other ways to help: share it with someone who needs it, star it on GitHub, or report a file that doesn’t open.')}</p>
+    </div>
     <div class="modal-actions">
       ${shareButtons('https://omniviewer3d.com/', `${CONFIG.appName}: free online 3D viewer, converter and editor`, true)}
       <a class="btn-outline" href="${CONFIG.repoUrl}" target="_blank" rel="noopener">${icon('github')} Source on GitHub</a>
-      ${has ? `<a class="btn-solid" href="${CONFIG.donateUrl}" target="_blank" rel="noopener">${icon('heart')} ${esc(CONFIG.donateLabel)}</a>` : ''}
     </div>`);
   $('#modalCard').onclick = (e) => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -2472,7 +2676,7 @@ registerMainContextActions();
 
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 applyStaticI18n();
-setWorkspace(store.get('ctx', 'all'));
+setWorkspace('all'); // workspace filtering removed: every tool is always available
 applyPagePrimary();
 renderAll();
 renderRecent();
@@ -2627,6 +2831,7 @@ async function saveProject() {
     };
     const zip = zipSync({ 'project.json': strToU8(JSON.stringify(manifest, null, 2)), 'scene.glb': new Uint8Array(await glb.arrayBuffer()) });
     download(new Blob([zip as BlobPart], { type: 'application/zip' }), `${baseFileName()}.omniproj`);
+    state.lastExport = null;
     history.markClean(); updateStatus();
     toast('Project saved on your device. Open the .omniproj file to continue later.');
   } catch (e: any) { toast(`Could not save the project: ${e?.message || e}`, true); }

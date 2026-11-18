@@ -165,6 +165,48 @@ export const FORMATS = {
     users: 'makers checking a sliced print before sending it to the printer',
     tips: ['Step through the print layer by layer with the layer slider.', 'Show or hide travel moves.', 'Check the overall print size and extrusion length.'],
   },
+  dxf: {
+    name: 'DXF', full: 'AutoCAD DXF (3D)', alt: [],
+    about: 'DXF is AutoCAD\'s open exchange format. Besides 2D drawings it can hold 3D faces, polyface meshes and lines, which is how many CAD programs exchange simple 3D geometry.',
+    users: 'CAD users, architects and laser-cutting / CNC shops',
+    tips: ['3D faces, polyface meshes and lines open; 2D-only drawings, blocks and ACIS solids do not.', 'The drawing unit ($INSUNITS) is read when present.', 'Convert the 3D faces to STL or 3MF for printing.'],
+  },
+  x3d: {
+    name: 'X3D', full: 'X3D (Extensible 3D)', alt: [],
+    about: 'X3D is the ISO standard for 3D on the web and the successor of VRML. It stores scenes as XML: shapes, colours, transforms and simple primitives.',
+    users: 'educators, scientists and web 3D developers',
+    tips: ['The XML encoding (.x3d) opens; transforms, colours, indexed face and triangle sets and primitives are supported.', 'X3D is defined in metres, so the real size is known.'],
+  },
+  drc: {
+    name: 'Draco', full: 'Google Draco compressed mesh', alt: [],
+    about: 'Draco is Google\'s geometry compression format. A .drc file holds one heavily compressed mesh or point cloud, often 10× smaller than the original.',
+    users: 'web developers and anyone receiving compressed scans',
+    tips: ['Decompression runs in your browser.', 'Draco stores no units: check the size after opening.', 'Convert to GLB to get a mesh any viewer can open.'],
+  },
+  las: {
+    name: 'LAS', full: 'LAS LiDAR point cloud', alt: [],
+    about: 'LAS is the standard file format for LiDAR and survey point clouds, from drones, mobile mappers and terrestrial scanners.',
+    users: 'surveyors, GIS analysts and drone operators',
+    tips: ['Uncompressed LAS 1.0–1.4 opens, with RGB colour when the file has it.', 'Very large clouds are thinned evenly to fit in memory.', 'Compressed LAZ must be decompressed to LAS first.'],
+  },
+  pts: {
+    name: 'PTS', full: 'PTS point cloud', alt: [],
+    about: 'PTS is a simple text point-cloud format (x y z, intensity, colour) written by Leica Cyclone, Autodesk ReCap and many scanners.',
+    users: 'laser-scanning and reality-capture teams',
+    tips: ['Points with and without colour open.', 'Convert to PLY to share with MeshLab or CloudCompare.'],
+  },
+  bvh: {
+    name: 'BVH', full: 'BVH motion capture (Biovision Hierarchy)', alt: [],
+    about: 'BVH stores a skeleton and its motion, recorded by motion-capture suits and used to animate characters in Blender, Maya and game engines.',
+    users: 'animators and motion-capture studios',
+    tips: ['The skeleton plays its motion in the viewer.', 'Convert to GLB to keep the animated skeleton for the web or a game engine.'],
+  },
+  pdb: {
+    name: 'PDB', full: 'Protein Data Bank (molecules)', alt: [],
+    about: 'PDB files describe the 3D structure of proteins and other molecules, atom by atom, as published by the Protein Data Bank.',
+    users: 'students, biochemists and anyone 3D printing a molecule',
+    tips: ['Atoms are shown as coloured spheres and bonds as lines.', 'Coordinates are in ångström: set a size before printing.', 'Convert to STL or 3MF to 3D print a molecule.'],
+  },
 };
 
 /** Export targets: id must match EXPORT_FORMATS in src/exporters.ts. */
@@ -176,6 +218,12 @@ export const TARGETS = {
   ply: { name: 'PLY', id: 'ply', note: 'PLY keeps vertex colours, including anything you painted.' },
   usdz: { name: 'USDZ', id: 'usdz', note: 'USDZ opens in AR Quick Look on iPhone and iPad, at real-world size. Basic materials and textures are kept; animation is not.' },
   '3mf': { name: '3MF', id: '3mf', note: '3MF keeps real units and separate objects, with one colour per object (or per triangle for painted models), and is the preferred format of modern slicers like PrusaSlicer, Bambu Studio and Cura.' },
+  amf: { name: 'AMF', id: 'amf', note: 'AMF (Additive Manufacturing Format) is XML with declared units and one colour per object; PrusaSlicer and Cura read it.' },
+  x3d: { name: 'X3D', id: 'x3d', note: 'X3D is the ISO web 3D standard (XML), in metres, with a colour per part.' },
+  wrl: { name: 'VRML', id: 'wrl', note: 'VRML 97 (.wrl) keeps colours and is still accepted by full-colour 3D printing services.' },
+  dxf: { name: 'DXF', id: 'dxf', note: 'The DXF is written with every triangle as a 3D face, one layer per part, for AutoCAD and other CAD programs. It is a mesh, not a solid model.' },
+  off: { name: 'OFF', id: 'off', note: 'OFF is a simple research mesh format read by MeshLab, CGAL and Geomview.' },
+  xyz: { name: 'XYZ', id: 'xyz', note: 'XYZ is a plain text list of points (x y z, plus colour when present). Meshes are written as their vertices.' },
 };
 
 /** Converter pages: [from, to]. Picked for search demand. */
@@ -185,17 +233,74 @@ export const CONVERSIONS = [
   ['fbx', 'glb'], ['fbx', 'obj'], ['fbx', 'stl'], ['gltf', 'glb'], ['3mf', 'stl'], ['dae', 'glb'], ['dae', 'obj'],
   ['ifc', 'glb'], ['ifc', 'obj'], ['ply', 'stl'], ['stl', 'ply'], ['usdz', 'glb'], ['glb', 'usdz'], ['obj', 'usdz'],
   ['stl', 'usdz'], ['3ds', 'obj'], ['wrl', 'stl'], ['vox', 'stl'], ['stl', '3mf'], ['obj', '3mf'], ['step', '3mf'], ['3mf', 'glb'],
+  // 2026-11: new inputs and outputs
+  ['dxf', 'stl'], ['stl', 'dxf'], ['obj', 'dxf'], ['step', 'dxf'], ['x3d', 'stl'], ['x3d', 'glb'], ['stl', 'x3d'], ['wrl', 'glb'],
+  ['stl', 'wrl'], ['obj', 'wrl'], ['stl', 'amf'], ['amf', 'stl'], ['drc', 'glb'], ['drc', 'obj'], ['las', 'ply'], ['las', 'xyz'],
+  ['pts', 'ply'], ['ply', 'xyz'], ['xyz', 'ply'], ['pdb', 'stl'], ['pdb', 'glb'], ['bvh', 'glb'], ['off', 'stl'], ['stl', 'off'],
+  ['fbx', 'usdz'], ['3mf', 'obj'], ['iges', 'obj'], ['ifc', 'stl'],
+];
+
+/**
+ * Guides for closed formats no browser can read: what the file is, why it needs its own program, and the
+ * export route to a format OMNIVIEWER opens. Dropping the file in shows its embedded preview (when present).
+ */
+export const GUIDES = [
+  { key: 'f3d', name: 'Fusion 360', ext: ['f3d', 'f3z'], vendor: 'Autodesk', export: 'STEP', alt: '3MF or STL',
+    how: ['In Fusion 360, open the design.', 'Choose <b>File → Export…</b>.', 'Pick <b>STEP (*.step)</b> for exact CAD, or <b>3MF</b> / <b>STL</b> for printing, and save.', 'Drop the exported file here to view, measure, repair or convert it to any of 44 file types.'],
+    about: 'An .f3d file is an Autodesk Fusion 360 design archive: B-rep bodies in Autodesk\'s ShapeManager kernel format, sketches, timeline history and settings. An .f3z bundles several designs.',
+    why: 'The geometry inside is stored in a closed CAD kernel format that only Autodesk software can rebuild. Online "F3D viewers" upload your design to Autodesk\'s servers to translate it. OMNIVIEWER never uploads files, so it shows the preview picture stored inside the archive (when there is one) and the export route instead.',
+    free: 'Fusion 360 has a free personal-use licence, and the Fusion web client can export STEP without installing anything.' },
+  { key: 'sldprt', name: 'SolidWorks', ext: ['sldprt', 'sldasm'], vendor: 'Dassault Systèmes', export: 'STEP', alt: 'STL or 3MF',
+    how: ['In SolidWorks, open the part or assembly.', 'Choose <b>File → Save As…</b>.', 'Set <b>Save as type</b> to <b>STEP AP214 (*.step)</b> or <b>STL (*.stl)</b>.', 'Drop the exported file here.'],
+    about: 'SLDPRT (parts) and SLDASM (assemblies) are SolidWorks native files with Parasolid geometry, features and history.',
+    why: 'The geometry uses the closed Parasolid kernel inside a proprietary container, so no browser library can read it without SolidWorks.',
+    free: 'eDrawings Viewer is free and can save SolidWorks files as STL.' },
+  { key: 'skp', name: 'SketchUp', ext: ['skp'], vendor: 'Trimble', export: 'OBJ or COLLADA (.dae)', alt: 'STL',
+    how: ['In SketchUp, choose <b>File → Export → 3D Model…</b>.', 'Pick <b>OBJ</b> or <b>COLLADA (.dae)</b> to keep materials, or <b>STL</b> for printing.', 'Drop the exported file (with its texture folder) here.'],
+    about: 'SKP is SketchUp\'s native model format, used for architecture, interiors and woodworking.',
+    why: 'The SKP format is only readable through Trimble\'s SDK, which is not available for browsers.',
+    free: 'SketchUp for Web (free plan) opens .skp files and can download STL.' },
+  { key: 'blend', name: 'Blender', ext: ['blend'], vendor: 'Blender Foundation', export: 'glTF 2.0 (.glb)', alt: 'FBX or OBJ',
+    how: ['In Blender, choose <b>File → Export → glTF 2.0 (.glb/.gltf)</b>.', 'Keep <b>Format: glTF Binary (.glb)</b> to pack materials, textures and animation in one file.', 'Drop the .glb here.'],
+    about: 'A .blend file is a complete Blender project: scenes, objects, modifiers, materials, node trees and animation.',
+    why: 'A .blend is a memory dump of Blender\'s internal data structures that changes with every version; only Blender itself can read it reliably.',
+    free: 'Blender is free and open source.' },
+  { key: 'dwg', name: 'AutoCAD DWG', ext: ['dwg'], vendor: 'Autodesk', export: 'DXF (3D faces) or STL', alt: 'STEP',
+    how: ['For 3D solids, type <b>EXPORT</b> and choose STL, or <b>STEPOUT</b> for STEP.', 'For 3D faces and meshes, use <b>SAVEAS → DXF</b>.', 'Drop the STL, STEP or DXF here.'],
+    about: 'DWG is AutoCAD\'s native drawing format for 2D plans and 3D models.',
+    why: 'DWG is a closed binary format; its 3D solids use the ACIS kernel, which browsers cannot rebuild.',
+    free: 'Autodesk DWG TrueView (free) converts DWG to DXF.' },
+  { key: 'ipt', name: 'Autodesk Inventor', ext: ['ipt', 'iam'], vendor: 'Autodesk', export: 'STEP', alt: 'STL',
+    how: ['In Inventor, choose <b>File → Export → CAD Format…</b>.', 'Pick <b>STEP Files (*.stp)</b>, or use <b>File → Export → 3D Print</b> for STL.', 'Drop the exported file here.'],
+    about: 'IPT (parts) and IAM (assemblies) are Autodesk Inventor native files.',
+    why: 'Inventor files use Autodesk\'s closed ShapeManager kernel and container format.' },
+  { key: 'catpart', name: 'CATIA', ext: ['catpart', 'catproduct'], vendor: 'Dassault Systèmes', export: 'STEP', alt: 'STL',
+    how: ['In CATIA, choose <b>File → Save As…</b>.', 'Set the type to <b>stp</b> and save.', 'Drop the STEP file here.'],
+    about: 'CATPart and CATProduct are CATIA V5 parts and assemblies, common in aerospace and automotive.',
+    why: 'CATIA files use Dassault\'s closed kernel and container formats.' },
+  { key: 'max', name: '3ds Max', ext: ['max'], vendor: 'Autodesk', export: 'FBX', alt: 'glTF or OBJ',
+    how: ['In 3ds Max, choose <b>File → Export → Export…</b>.', 'Pick <b>FBX</b> (or <b>glTF</b> in 2023 and later).', 'Drop the exported file (and textures) here.'],
+    about: 'A .max file is an Autodesk 3ds Max scene with objects, modifiers, materials and animation.',
+    why: 'The .max format is closed and only readable by 3ds Max.' },
+  { key: 'c4d', name: 'Cinema 4D', ext: ['c4d'], vendor: 'Maxon', export: 'FBX', alt: 'glTF or OBJ',
+    how: ['In Cinema 4D, choose <b>File → Export</b>.', 'Pick <b>FBX</b> or <b>glTF</b>.', 'Drop the exported file here.'],
+    about: 'A .c4d file is a Maxon Cinema 4D scene.',
+    why: 'The .c4d format is closed and only readable by Cinema 4D or Maxon\'s SDK.' },
+  { key: 'rvt', name: 'Revit', ext: ['rvt', 'rfa'], vendor: 'Autodesk', export: 'IFC', alt: 'FBX',
+    how: ['In Revit, choose <b>File → Export → IFC</b>.', 'Keep the default IFC2x3 or IFC4 setup.', 'Drop the IFC here: storeys, element types and properties are kept.'],
+    about: 'RVT is Autodesk Revit\'s BIM project format; RFA is a Revit family.',
+    why: 'Revit files are closed databases readable only by Revit. IFC is the open BIM standard made for exchange.' },
 ];
 
 /** Tool pages. `tool` is read by the app to open the right panel after a file loads. */
 export const TOOLS = [
   {
-    slug: 'convert', tool: 'convert', icon: 'download', label: 'Converter', short: 'Convert between 30+ formats',
+    slug: 'convert', tool: 'convert', icon: 'download', label: 'Converter', short: 'Open and convert 44 file types',
     title: '3D File Converter Online · Free, No Upload',
     h1: 'Free <span class="glow">3D file converter</span>.',
-    lede: 'Convert STEP, STL, OBJ, FBX, GLB, 3MF, IFC, 3DM and more to STL, OBJ, GLB, glTF, PLY or USDZ. Files are converted on your device and never uploaded.',
-    desc: 'Free online 3D file converter. Convert STEP, STL, OBJ, FBX, GLB, 3MF, IFC, 3DM and 30+ formats to STL, OBJ, GLB, PLY or USDZ. No upload, no sign-up, no ads.',
-    body: ['Open any supported 3D file, then pick an export format. The converter keeps your edits, paint and scaling, and can export just one selected part.', 'Because conversion happens in your browser, even confidential CAD files stay on your computer.'],
+    lede: 'Drop any 3D file, search for the format you need (or the program you are sending it to) and download. STL, 3MF, STEP, FBX, OBJ, GLB, USDZ, IFC, Rhino and more: every format it opens, converted on your device and never uploaded.',
+    desc: 'Free online 3D file converter. Convert STEP, STL, OBJ, FBX, GLB, 3MF, IFC, 3DM and 40+ formats to STL, 3MF, STEP, FBX, OBJ, GLB, USDZ, IFC, 3DM and 40+ more. No upload, no sign-up, no ads.',
+    body: ['Open any supported 3D file and the converter opens with the best formats for it. Type to search by format, use (printing, web, AR) or program (Blender, Cura, Unity, iPhone). It keeps your edits, paint and scaling, shows what each format keeps and loses, and can export just one selected part.', 'Because conversion happens in your browser, even confidential CAD files stay on your computer.'],
   },
   {
     slug: 'scale', tool: 'scale', icon: 'scale', label: 'Scale & resize', short: 'Resize to an exact size',
@@ -273,9 +378,9 @@ export const TOOLS = [
     slug: 'split-stl', tool: 'cut', icon: 'cut', label: 'Split / cut', short: 'Cut models into parts',
     title: 'Split STL Online · Cut a 3D Model Into Two Parts',
     h1: 'Split and <span class="glow">cut</span> 3D models.',
-    lede: 'Slice an STL, OBJ or STEP model along any plane into two closed halves, ready to print separately when a part is too big for your printer.',
-    desc: 'Free online STL splitter. Cut STL, OBJ, 3MF and STEP models along a plane into two watertight halves with filled cut faces, then download each part.',
-    body: ['Position the cutting plane on the X, Y or Z axis with a slider. Both halves are closed with a flat face, so they stay watertight and printable. Add a gap to see the parts apart.', 'You can also save the cross-section outline as SVG or DXF for laser cutting.'],
+    lede: 'Slice an STL, OBJ or STEP model along any plane into two halves with flat cut faces, to print separately when a part is too big for your printer.',
+    desc: 'Free online STL splitter. Cut STL, OBJ, 3MF and STEP models along a plane into two halves with filled cut faces, checked for holes, then download each part.',
+    body: ['Position the cutting plane on the X, Y or Z axis with a slider. Each half gets a flat face over the cut and is checked afterwards; if the original mesh had holes or overlaps, you are told which halves need Repair. Add a gap to see the parts apart.', 'You can also save the cross-section outline as SVG or DXF for laser cutting.'],
   },
   {
     slug: 'stl-to-dxf', tool: 'cut', icon: 'cut', label: 'Section to DXF / SVG', short: 'Laser-cut outlines',
@@ -289,9 +394,9 @@ export const TOOLS = [
     slug: 'hollow-stl', tool: 'hollow', icon: 'hollow', label: 'Hollow', short: 'Save resin and filament',
     title: 'Hollow STL Online · Make a 3D Model Hollow With a Wall Thickness',
     h1: 'Hollow out <span class="glow">3D models</span>.',
-    lede: 'Make a closed STL or OBJ model hollow with an even wall thickness to save resin or filament, then check the walls with the section view.',
+    lede: 'Make a closed STL or OBJ model hollow with an approximate wall thickness to save resin or filament, add drain holes, then check the walls with the section view.',
     desc: 'Free online tool to hollow STL and OBJ models with a chosen wall thickness, saving resin and filament. Check the walls in a cut-away view and download as STL or 3MF.',
-    body: ['Set the wall thickness in millimetres and apply. Use the section plane to look inside. For resin prints, add drain holes in your slicer.', 'Run Repair first on models with holes.'],
+    body: ['Set the wall thickness in millimetres and apply. The inner wall is the outer surface moved inwards, so thin necks and sharp corners can come out thinner; check with the section view and the thickness map. For resin prints, add drain holes at the lowest point.', 'Run Repair first on models with holes.'],
   },
   {
     slug: 'wall-thickness-checker', tool: 'thickness', icon: 'thickness', label: 'Wall thickness', short: 'Find walls that are too thin',
@@ -299,7 +404,7 @@ export const TOOLS = [
     h1: 'Check <span class="glow">wall thickness</span>.',
     lede: 'Colour-code an STL, OBJ or 3MF model by wall thickness: red areas are thinner than your minimum and may not print, green areas are fine.',
     desc: 'Free online wall thickness checker for 3D printing. Highlight walls thinner than your minimum in STL, OBJ and 3MF models with a heatmap and see the share of thin surface.',
-    body: ['Set your minimum (for example 0.8 mm for FDM or 0.5 mm for resin) and run the check. The heatmap and the percentage of thin surface show where to thicken the design.', 'Thickness is measured inwards from every point of the surface.'],
+    body: ['Set your minimum (for example 0.8 mm for FDM or 0.5 mm for resin) and run the check. The heatmap and the percentage of thin surface show where to thicken the design.', 'Thickness is sampled inwards from each vertex of the mesh, so very small features between vertices can be missed; grey areas found no opposite wall.'],
   },
   {
     slug: '3d-text-generator', tool: 'text', icon: 'text', label: '3D text', short: 'Text to STL',

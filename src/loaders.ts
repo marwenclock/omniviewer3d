@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { unzipSync, unzip } from 'fflate';
+import { parseX3D, parseDXF, parsePTS, parseLAS, sniffFormat, PROPRIETARY, ProprietaryFormatError } from './formats-extra';
 
 /** Resolves a path inside public/libs relative to the page, so it works on any sub-path. */
 export const libUrl = (path: string) => new URL(`libs/${path}`, document.baseURI).href;
@@ -39,6 +40,13 @@ export const FORMATS: FormatInfo[] = [
   { ext: ['xyz'], name: 'XYZ point cloud' },
   { ext: ['gcode', 'gco'], name: 'G-code toolpath' },
   { ext: ['splat', 'ksplat', 'spz'], name: 'Gaussian splats (also 3DGS .ply)' },
+  { ext: ['drc'], name: 'Draco compressed mesh' },
+  { ext: ['x3d'], name: 'X3D (XML)' },
+  { ext: ['dxf'], name: 'DXF (3D faces, polyface meshes, lines)' },
+  { ext: ['las'], name: 'LAS LiDAR point cloud' },
+  { ext: ['pts'], name: 'PTS point cloud' },
+  { ext: ['bvh'], name: 'BVH motion capture' },
+  { ext: ['pdb'], name: 'Protein Data Bank (molecules)' },
   { ext: ['zip'], name: 'ZIP archive of any of the above' },
 ];
 
@@ -46,7 +54,9 @@ export const MODEL_EXTS = new Set(FORMATS.flatMap((f) => f.ext).filter((e) => e 
 export const ACCEPT = FORMATS.flatMap((f) => f.ext).map((e) => '.' + e).join(',') +
   ',.mtl,.bin,.png,.jpg,.jpeg,.webp,.bmp,.tga,.gif,.ktx2,.dds,.tif,.tiff,.omniproj';
 
-export const extOf = (name: string) => name.split('.').pop()!.toLowerCase();
+export const extOf = (name: string) => (name.includes('.') ? name.split('.').pop()!.toLowerCase() : '');
+/** Files that travel with a model (textures, material libraries, buffers): never sniffed as models. */
+const COMPANION_EXTS = new Set(['mtl', 'bin', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'tga', 'gif', 'ktx2', 'dds', 'tif', 'tiff', 'hdr', 'exr', 'txt', 'md', 'pdf', 'json', 'omniproj']);
 
 /**
  * Value for <input type="file" accept>. Phones and tablets (iOS especially) grey out any file whose type the
@@ -145,7 +155,7 @@ export interface LoadOptions {
  */
 export async function loadFiles(input: File[], onProgress: Progress = () => {}, signal?: AbortSignal, opts: LoadOptions = {}): Promise<LoadResult> {
   const aborted = () => { if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError'); };
-  const files = await expandZips(input);
+  let files = await expandZips(input);
   aborted();
   const byPath = new Map<string, File>();
   const byBase = new Map<string, File[]>();
@@ -168,6 +178,8 @@ export async function loadFiles(input: File[], onProgress: Progress = () => {}, 
     const track = (info: ResourceInfo, out: string) => { byResolved.set(out, info); return out; };
     m.setURLModifier((url) => {
       if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+      // The app's own engines and decoders (Draco, KTX2, Rhino...) are not outside requests: never block them.
+      if (typeof document !== 'undefined' && url.startsWith(libUrl(''))) return url;
       const info: ResourceInfo = { url, owner: main.name, status: 'loaded' };
       resources.push(info);
       const isAbs = /^[a-z][a-z0-9+.-]*:/i.test(url);
@@ -205,8 +217,24 @@ export async function loadFiles(input: File[], onProgress: Progress = () => {}, 
     return m;
   };
 
+  // Files with no extension or a wrong one (.bin, .dat, renamed downloads): recognise them by their content.
+  files = await Promise.all(files.map(async (f) => {
+    const ext = extOf(f.name);
+    if (MODEL_EXTS.has(ext) || COMPANION_EXTS.has(ext) || PROPRIETARY[ext] || ext === 'zip') return f;
+    const real = await sniffFormat(f).catch(() => null);
+    if (!real || real === 'zip' || real === 'omniproj') return f;
+    const renamed = new File([f], `${f.name.includes('.') ? f.name.slice(0, f.name.lastIndexOf('.')) : f.name}.${real}`, { type: f.type, lastModified: f.lastModified });
+    filePaths.set(renamed, pathOf(f).replace(/[^/]*$/, renamed.name));
+    onProgress(`${f.name} looks like a .${real} file`);
+    return renamed;
+  }));
   const mains = files.filter((f) => MODEL_EXTS.has(extOf(f.name)));
-  if (!mains.length) throw new Error('No supported 3D model was found in the selected files.');
+  if (!mains.length) {
+    const prop = files.find((f) => PROPRIETARY[extOf(f.name)]);
+    if (prop) throw new ProprietaryFormatError(PROPRIETARY[extOf(prop.name)], prop);
+    const ex = files.map((f) => extOf(f.name)).filter((e) => !COMPANION_EXTS.has(e));
+    throw new Error(ex.length ? `.${ex[0]} is not a 3D format OMNIVIEWER recognises, and its content didn't match any known format. Try exporting it as STEP, glTF, OBJ or STL.` : 'No supported 3D model was found in the selected files.');
+  }
 
   const root = new THREE.Group();
   root.name = mains.length === 1 ? mains[0].name : 'Scene';
@@ -343,8 +371,9 @@ async function loadOne(
     }
     case 'fbx': {
       const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js');
-      const obj = new FBXLoader(manager).parse(await buf(), '');
-      return one(obj, obj.animations || []);
+      const data = await buf();
+      const obj = new FBXLoader(manager).parse(data, '');
+      return one(obj, obj.animations || [], fbxUnit(data));
     }
     case 'stl': {
       const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
@@ -461,7 +490,9 @@ async function loadOne(
     case '3dm': {
       const { Rhino3dmLoader } = await import('three/addons/loaders/3DMLoader.js');
       onProgress('Starting the Rhino engine…');
-      const loader = new Rhino3dmLoader(manager);
+      // Not the file-resolving manager: it would treat the engine's own script as a missing companion file and
+      // block it, so local .3dm files never finished loading. Rhino files embed their textures.
+      const loader = new Rhino3dmLoader();
       loader.setLibraryPath(libUrl('rhino3dm/'));
       const data = await buf();
       const obj = await new Promise<THREE.Object3D>((res, rej) => loader.parse(data, res, rej));
@@ -484,8 +515,129 @@ async function loadOne(
     }
     case 'off':
       return one(meshFromGeometry(parseOFF(await text()), name));
+    case 'drc': {
+      const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+      const loader = new DRACOLoader(manager).setDecoderPath(libUrl('draco/'));
+      const data = await buf();
+      try {
+        const geo: THREE.BufferGeometry = await new Promise((res, rej) => loader.parse(data, res, rej));
+        return one(geo.index || geo.attributes.position.count % 3 === 0 ? meshFromGeometry(geo, name) : pointsFromGeometry(geo, name));
+      } finally { loader.dispose(); }
+    }
+    case 'x3d':
+      return one(parseX3D(await text(), name), [], 'm'); // X3D is defined in metres
+    case 'dxf': {
+      const r = parseDXF(await text(), name);
+      return one(r.object, [], r.unit);
+    }
+    case 'pts':
+      return one(parsePTS(await text(), name));
+    case 'las': {
+      const r = parseLAS(await buf(), name);
+      return one(r.object);
+    }
+    case 'bvh': {
+      const { BVHLoader } = await import('three/addons/loaders/BVHLoader.js');
+      const res = new BVHLoader(manager).parse(await text());
+      const g = new THREE.Group(); g.name = name;
+      g.add(res.skeleton.bones[0]);
+      const helper = new THREE.SkeletonHelper(res.skeleton.bones[0]);
+      (helper.material as THREE.LineBasicMaterial).linewidth = 2;
+      helper.name = 'Skeleton';
+      g.add(helper);
+      // The helper builds its line positions from the bones on update: do it now so size, framing and stats are right.
+      g.updateMatrixWorld(true);
+      helper.geometry.computeBoundingBox(); helper.geometry.computeBoundingSphere();
+      // SkeletonHelper can't be cloned (exports copy the scene): export a static copy of its lines instead.
+      helper.clone = function (this: THREE.SkeletonHelper) {
+        const l = new THREE.LineSegments(this.geometry.clone(), (this.material as THREE.Material).clone());
+        l.name = this.name;
+        this.matrix.decompose(l.position, l.quaternion, l.scale);
+        return l as any;
+      };
+      res.clip.name = res.clip.name || 'Motion';
+      return one(g, [res.clip]);
+    }
+    case 'pdb':
+      return one(await moleculeFromPDB(await text(), name));
   }
   throw new Error(`Unsupported format: .${ext}`);
+}
+
+/** Atoms as shaded spheres (CPK colours from the file) and bonds as lines; coordinates are in ångström. */
+async function moleculeFromPDB(text: string, name: string): Promise<THREE.Object3D> {
+  const { PDBLoader } = await import('three/addons/loaders/PDBLoader.js');
+  const pdb = new PDBLoader().parse(text);
+  const atoms = pdb.geometryAtoms, bonds = pdb.geometryBonds;
+  const n = atoms.attributes.position.count;
+  if (!n) throw new Error('No atoms (ATOM / HETATM records) were found in this PDB file.');
+  const ball = new THREE.IcosahedronGeometry(n > 20000 ? 0.25 : 0.35, n > 20000 ? 0 : 1);
+  const mesh = new THREE.InstancedMesh(ball, new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.05 }), n);
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    m.makeTranslation(atoms.attributes.position.getX(i), atoms.attributes.position.getY(i), atoms.attributes.position.getZ(i));
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, c.setRGB(atoms.attributes.color.getX(i), atoms.attributes.color.getY(i), atoms.attributes.color.getZ(i)));
+  }
+  mesh.name = 'Atoms';
+  mesh.computeBoundingSphere();
+  // Instanced meshes don't survive every tool or export: bake them into one ordinary mesh.
+  const baked = bakeInstanced(mesh);
+  const g = new THREE.Group(); g.name = name; g.add(baked);
+  // Keep the atoms so the molecule can be saved back as PDB.
+  g.userData.pdbAtoms = (pdb.json?.atoms || []).map((a: any) => ({ x: a[0], y: a[1], z: a[2], element: String(a[4] || 'C') }));
+  if (bonds.attributes.position.count) {
+    const l = new THREE.LineSegments(bonds, new THREE.LineBasicMaterial({ color: 0x9aa0a6 }));
+    l.name = 'Bonds'; g.add(l);
+  }
+  return g;
+}
+
+function bakeInstanced(im: THREE.InstancedMesh): THREE.Mesh {
+  const src = im.geometry.index ? im.geometry.toNonIndexed() : im.geometry;
+  const per = src.attributes.position.count;
+  const pos = new Float32Array(per * im.count * 3), nor = new Float32Array(per * im.count * 3), col = new Float32Array(per * im.count * 3);
+  const m = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3(), c = new THREE.Color();
+  for (let i = 0; i < im.count; i++) {
+    im.getMatrixAt(i, m); nm.getNormalMatrix(m); im.getColorAt(i, c);
+    for (let k = 0; k < per; k++) {
+      const o = (i * per + k) * 3;
+      v.fromBufferAttribute(src.attributes.position as THREE.BufferAttribute, k).applyMatrix4(m); pos[o] = v.x; pos[o + 1] = v.y; pos[o + 2] = v.z;
+      v.fromBufferAttribute(src.attributes.normal as THREE.BufferAttribute, k).applyMatrix3(nm).normalize(); nor[o] = v.x; nor[o + 1] = v.y; nor[o + 2] = v.z;
+      col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.05 }));
+  mesh.name = im.name;
+  return mesh;
+}
+
+/** Reads GlobalSettings › UnitScaleFactor (centimetres per file unit) from an FBX, binary or text. */
+export function fbxUnit(data: ArrayBuffer): DeclaredUnit | undefined {
+  const b = new Uint8Array(data);
+  const map = (cm: number): DeclaredUnit | undefined => {
+    const units: [number, DeclaredUnit][] = [[0.1, 'mm'], [1, 'cm'], [100, 'm'], [2.54, 'in'], [30.48, 'ft']];
+    return units.find(([v]) => Math.abs(cm - v) < v * 1e-3)?.[1];
+  };
+  const head = new TextDecoder('latin1').decode(b.subarray(0, 20));
+  if (head.startsWith('Kaydara FBX Binary')) {
+    // Find the property record: "UnitScaleFactor" S, "double" S, "Number" S, "" S, then D <float64>.
+    const key = new TextEncoder().encode('UnitScaleFactor');
+    outer: for (let i = 0; i < b.length - 64; i++) {
+      for (let k = 0; k < key.length; k++) if (b[i + k] !== key[k]) continue outer;
+      let p = i + key.length;
+      for (let s = 0; s < 3; s++) { if (b[p] !== 0x53) continue outer; const len = new DataView(data, p + 1, 4).getUint32(0, true); p += 5 + len; }
+      if (b[p] !== 0x44) continue;
+      return map(new DataView(data, p + 1, 8).getFloat64(0, true));
+    }
+    return undefined;
+  }
+  const m = new TextDecoder().decode(b.subarray(0, Math.min(b.length, 200000))).match(/"UnitScaleFactor"\s*,[^,]*,[^,]*,[^,]*,\s*([\d.eE+-]+)/);
+  return m ? map(Number(m[1])) : undefined;
 }
 
 /** Reads the unit a 3MF package declares (<model unit="inch">). */

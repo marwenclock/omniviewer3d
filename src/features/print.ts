@@ -269,7 +269,7 @@ async function addDrainHole(diameterMm: number) {
 
 registerPanel({
   id: 'hollow', label: 'Hollow', icon: 'hollow',
-  hint: 'Make a closed model hollow with an even wall, e.g. to save resin',
+  hint: 'Make a closed model hollow with an approximate wall, e.g. to save resin',
   render() {
     const u = UNITS[ctx.unit()].short;
     return `${appliesTo()}<div class="row"><label>Wall</label><input type="number" step="0.1" min="0" value="${round(mmToUnits(hollowWallMm))}" data-wall aria-label="Wall thickness"/><span class="cost-unit">${u}</span></div>

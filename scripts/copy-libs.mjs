@@ -12,6 +12,9 @@ const copies = [
   ['three/examples/jsm/libs/draco/gltf/draco_decoder.wasm', 'draco/draco_decoder.wasm'],
   ['three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js', 'draco/draco_wasm_wrapper.js'],
   ['three/examples/jsm/libs/draco/gltf/draco_decoder.js', 'draco/draco_decoder.js'],
+  // Draco encoder for .drc export (Google's universal build: runs in browsers and Node)
+  ['draco3d/draco_encoder_nodejs.js', 'draco/draco_encoder.js'],
+  ['draco3d/draco_encoder.wasm', 'draco/draco_encoder.wasm'],
   ['three/examples/jsm/libs/basis/basis_transcoder.js', 'basis/basis_transcoder.js'],
   ['three/examples/jsm/libs/basis/basis_transcoder.wasm', 'basis/basis_transcoder.wasm'],
   ['occt-import-js/dist/occt-import-js.js', 'occt/occt-import-js.js'],

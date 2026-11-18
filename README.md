@@ -13,17 +13,20 @@
 | Import | |
 | --- | --- |
 | Mesh / scene | glTF, GLB, OBJ (+MTL), FBX, STL, PLY, 3MF, DAE (Collada), 3DS, USD/USDZ/USDA/USDC, OFF, AMF, VRML/WRL, VTK/VTP, LWO, KMZ, VOX, MD2 |
-| CAD | STEP/STP, IGES/IGS, BREP (OpenCascade, in a background worker), 3DM (Rhino) |
+| CAD | STEP/STP, IGES/IGS, BREP (OpenCascade, in a background worker), 3DM (Rhino), DXF (3D faces, polyface meshes, lines) |
 | BIM | IFC |
-| Gaussian splats | .splat, .ksplat, .spz, 3DGS .ply (view, measure, screenshot) |
-| Point clouds & toolpaths | PCD, XYZ, PLY point clouds, G-code |
+| Gaussian splats | .splat, .ksplat, .spz, 3DGS .ply (view, frame, screenshot; not measurable or convertible) |
+| Web / science | X3D (XML), Draco .drc, PDB molecules, BVH motion capture |
+| Point clouds & toolpaths | PCD, XYZ, PTS, LAS (uncompressed), PLY point clouds, G-code |
 | Archives | ZIP of any of the above (with textures) |
+| Recognised by content | Files with a missing or wrong extension (.bin, .dat, renamed downloads) are identified from their first bytes |
+| Closed formats (guided) | Fusion 360 .f3d/.f3z, SolidWorks, Inventor, CATIA, Creo/NX, SketchUp, Blender, 3ds Max, Maya, Cinema 4D, DWG, Revit, Archicad and more: OMNIVIEWER shows the preview stored inside (when there is one) and the exact export steps, since only their own programs can read the geometry |
 
 | Export |
 | --- |
-| GLB, glTF, STL (binary / ASCII), OBJ, OBJ + MTL + textures (zip), PLY, USDZ, 3MF (with units and colours), section outlines as SVG / DXF, PNG screenshots at any size, MP4 / WebM / GIF turntables, HTML reports, SVG drawings, `.omniproj` projects |
+| Every format it opens except binary USDC (44 file types): GLB, glTF, STL (binary / ASCII), 3MF, AMF, OBJ, OBJ + MTL + textures (zip), FBX (binary 7.4), COLLADA, KMZ, 3DS, USD/USDA (text), USDZ, LightWave, MagicaVoxel (voxelised), MD2, STEP / IGES / BREP (faceted: one flat face per triangle), Rhino 3DM, IFC4, Draco, VTK / VTP, PLY (binary / ASCII), PCD, PTS, LAS, XYZ, Gaussian splats (.splat / .spz / .ksplat from points), X3D, VRML, DXF (3D faces), OFF, G-code (from toolpaths), BVH (from skeletons), PDB (from molecules); section outlines as SVG / DXF, PNG screenshots at any size, MP4 / WebM / GIF turntables, HTML reports, SVG drawings, `.omniproj` projects |
 
-Every export shows a preflight report first: what is included (visible parts or everything), the output unit and up axis, and what the format cannot keep. glTF, GLB and USDZ are written in metres with Y up; STL defaults to millimetres and can be turned Z-up for slicers; 3MF declares its unit.
+The converter is searchable: type a format, a use ("print", "AR") or a program ("Blender", "Cura", "iPhone") and it suggests the best targets for the open model. Every export shows a preflight report first: what is included (visible parts or everything), the output unit and up axis, and what the format cannot keep. glTF, GLB and USDZ are written in metres with Y up; STL defaults to millimetres and can be turned Z-up for slicers; 3MF declares its unit.
 
 Drop or paste a model together with its textures, `.mtl` or `.bin` files, a whole folder, or a `.zip`. Batch convert many files into one ZIP.
 

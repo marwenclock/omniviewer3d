@@ -1,7 +1,8 @@
 // Builds the SEO landing pages (format viewers, converters, tools) in every language.
 // Used by vite.config.ts (home page + dev server) and scripts/generate-pages.mjs (build).
-import { FORMATS, TARGETS, CONVERSIONS, TOOLS } from './seo-data.mjs';
+import { FORMATS, TARGETS, CONVERSIONS, TOOLS, GUIDES } from './seo-data.mjs';
 import { LANGS } from './i18n.mjs';
+import { execSync } from 'node:child_process';
 
 /**
  * Public address of the site, with a trailing slash. Used for canonical links, hreflang and the sitemap.
@@ -26,13 +27,13 @@ const COMMON_FAQ = [
 ];
 
 /** Formats without a triangle surface get honest copy (OV-028, OV-073). */
-const NO_MESH = { splat: 'splat', pcd: 'points', xyz: 'points', gcode: 'toolpath' };
+const NO_MESH = { splat: 'splat', pcd: 'points', xyz: 'points', las: 'points', pts: 'points', gcode: 'toolpath', bvh: 'motion' };
 const LIMIT_TEXT = {
-  en: { splat: 'Gaussian splats are a cloud of soft points, not a surface: you can view, frame and screenshot them, but measuring and converting to mesh formats are not available.', points: 'Point clouds have no surface, so repair, volume and STL export do not apply. You can view them, change point size and colour, and measure between points.', toolpath: 'G-code is a printer toolpath made of lines, not a solid: step through it layer by layer, but mesh tools and mesh export do not apply.' },
-  es: { splat: 'Los splats gaussianos son una nube de puntos suaves, no una superficie: puedes verlos y hacer capturas, pero no medirlos ni convertirlos a mallas.', points: 'Las nubes de puntos no tienen superficie: la reparación, el volumen y la exportación a STL no se aplican. Puedes verlas y medir entre puntos.', toolpath: 'El G-code es una trayectoria de impresora hecha de líneas, no un sólido: recórrela capa a capa; las herramientas de malla no se aplican.' },
-  de: { splat: 'Gaussian Splats sind eine Wolke weicher Punkte, keine Oberfläche: ansehen und Bilder speichern geht, Messen und Umwandeln in Netze nicht.', points: 'Punktwolken haben keine Oberfläche: Reparatur, Volumen und STL-Export gelten nicht. Ansehen und zwischen Punkten messen geht.', toolpath: 'G-Code ist ein Druckerpfad aus Linien, kein Körper: Schicht für Schicht ansehen; Netzwerkzeuge gelten nicht.' },
-  fr: { splat: 'Les splats gaussiens sont un nuage de points flous, pas une surface : vous pouvez les voir et les capturer, mais pas les mesurer ni les convertir en maillage.', points: 'Les nuages de points n’ont pas de surface : réparation, volume et export STL ne s’appliquent pas. Vous pouvez les voir et mesurer entre des points.', toolpath: 'Le G-code est un parcours d’imprimante fait de lignes, pas un solide : parcourez-le couche par couche ; les outils de maillage ne s’appliquent pas.' },
-  pt: { splat: 'Splats gaussianos são uma nuvem de pontos suaves, não uma superfície: dá para ver e capturar, mas não medir nem converter em malha.', points: 'Nuvens de pontos não têm superfície: reparo, volume e exportação STL não se aplicam. Dá para ver e medir entre pontos.', toolpath: 'G-code é um caminho de impressora feito de linhas, não um sólido: veja camada por camada; ferramentas de malha não se aplicam.' },
+  en: { motion: 'BVH holds a skeleton and its motion, not a surface: the motion plays in the viewer and can be converted to GLB; mesh tools do not apply.', splat: 'Gaussian splats are a cloud of soft points, not a surface: you can view, frame and screenshot them, but measuring and converting to mesh formats are not available.', points: 'Point clouds have no surface, so repair, volume and STL export do not apply. You can view them, change point size and colour, and measure between points.', toolpath: 'G-code is a printer toolpath made of lines, not a solid: step through it layer by layer, but mesh tools and mesh export do not apply.' },
+  es: { motion: 'BVH contiene un esqueleto y su movimiento, no una superficie: el movimiento se reproduce y puede convertirse a GLB; las herramientas de malla no se aplican.', splat: 'Los splats gaussianos son una nube de puntos suaves, no una superficie: puedes verlos y hacer capturas, pero no medirlos ni convertirlos a mallas.', points: 'Las nubes de puntos no tienen superficie: la reparación, el volumen y la exportación a STL no se aplican. Puedes verlas y medir entre puntos.', toolpath: 'El G-code es una trayectoria de impresora hecha de líneas, no un sólido: recórrela capa a capa; las herramientas de malla no se aplican.' },
+  de: { motion: 'BVH enthält ein Skelett und seine Bewegung, keine Oberfläche: die Bewegung läuft im Viewer und lässt sich in GLB umwandeln; Netzwerkzeuge gelten nicht.', splat: 'Gaussian Splats sind eine Wolke weicher Punkte, keine Oberfläche: ansehen und Bilder speichern geht, Messen und Umwandeln in Netze nicht.', points: 'Punktwolken haben keine Oberfläche: Reparatur, Volumen und STL-Export gelten nicht. Ansehen und zwischen Punkten messen geht.', toolpath: 'G-Code ist ein Druckerpfad aus Linien, kein Körper: Schicht für Schicht ansehen; Netzwerkzeuge gelten nicht.' },
+  fr: { motion: 'Le BVH contient un squelette et son mouvement, pas une surface : le mouvement se lit dans la visionneuse et se convertit en GLB ; les outils de maillage ne s’appliquent pas.', splat: 'Les splats gaussiens sont un nuage de points flous, pas une surface : vous pouvez les voir et les capturer, mais pas les mesurer ni les convertir en maillage.', points: 'Les nuages de points n’ont pas de surface : réparation, volume et export STL ne s’appliquent pas. Vous pouvez les voir et mesurer entre des points.', toolpath: 'Le G-code est un parcours d’imprimante fait de lignes, pas un solide : parcourez-le couche par couche ; les outils de maillage ne s’appliquent pas.' },
+  pt: { motion: 'BVH contém um esqueleto e seu movimento, não uma superfície: o movimento toca no visualizador e pode ser convertido em GLB; ferramentas de malha não se aplicam.', splat: 'Splats gaussianos são uma nuvem de pontos suaves, não uma superfície: dá para ver e capturar, mas não medir nem converter em malha.', points: 'Nuvens de pontos não têm superfície: reparo, volume e exportação STL não se aplicam. Dá para ver e medir entre pontos.', toolpath: 'G-code é um caminho de impressora feito de linhas, não um sólido: veja camada por camada; ferramentas de malha não se aplicam.' },
 };
 /** What to know before opening each format (OV-076): companion files, units, exactness. */
 const FORMAT_NOTES = {
@@ -76,9 +77,9 @@ function buildPages(lang) {
   } : {
     slug: '', kind: 'home',
     title: `${APP} · Free Online 3D Viewer, Converter & Editor`,
-    desc: 'Free all-in-one 3D toolkit in your browser. View, convert, scale, measure, paint and edit STL, STEP, OBJ, FBX, GLB, 3MF, IFC, 3DM and 30+ formats. No uploads, no ads, no sign-up.',
+    desc: 'Free all-in-one 3D toolkit in your browser. View, convert, scale, measure, paint and edit STL, STEP, OBJ, FBX, GLB, 3MF, IFC, 3DM, DXF and 40+ formats. No uploads, no ads, no sign-up.',
     h1: 'Every 3D file.<br />One free <span class="glow">toolkit</span>.',
-    lede: 'View, convert, scale, measure, paint and edit 3D models right in your browser. 30+ formats, no uploads, no ads, no sign-up.',
+    lede: 'Open and convert 44 file types, then measure, repair and edit, right in your browser. Nothing is uploaded. No ads, no sign-up.',
     config: {},
     copy: [['A free 3D toolkit that runs in your browser', [`${APP} opens almost any 3D file, from CAD formats like STEP, IGES and Rhino 3DM to meshes like STL, OBJ, FBX and GLB, building models in IFC, point clouds and Gaussian splats. Everything runs locally: nothing is uploaded, and there are no accounts or ads.`, 'Use it to check a part before printing, convert a file for another program, fix the scale of a model, repair a mesh, estimate print cost, measure a distance, paint a mock-up or make quick edits.']]],
     faq: COMMON_FAQ,
@@ -145,7 +146,7 @@ function buildPages(lang) {
       title: `Convert ${f.name} to ${t.name} Online · Free ${f.name} to ${t.name} Converter`,
       desc: `Convert ${f.name} (${extList(f, from)}) to ${t.name} free in your browser. No upload, no sign-up, no ads. Preview, scale and fix the model before you download.`,
       h1: `Convert <span class="glow">${esc(f.name)} to ${esc(t.name)}</span>.`,
-      lede: `Drop a ${f.name} file and download it as ${t.name}, with the real size kept. Conversion happens on your device, so your file is not uploaded.`,
+      lede: `Drop a ${f.name} file, check it, and download it as ${t.name}. The real size is kept when the file declares its units; otherwise you confirm them first. Conversion happens on your device, so your file is not uploaded.`,
       config: { kind: 'convert', from, to: t.id },
       copy: [
         [`How to convert ${f.name} to ${t.name}`, null, [`Click <b>Open</b> above, or drag your ${f.name} file onto this page.`, 'Check the preview and the size. Optionally confirm units, repair it or hide parts you don\'t want.', `The export window opens with <b>${t.name}</b> selected and shows what is kept and lost, the real size and the orientation. Click Download.`]],
@@ -155,9 +156,33 @@ function buildPages(lang) {
       faq: [
         [`Is this ${f.name} to ${t.name} converter free?`, 'Yes, free with no watermarks or sign-up.'],
         [`Will my ${f.name} file be uploaded?`, 'No. The conversion runs in your browser; the file is not sent to a server.'],
-        [`Will the size be correct in ${t.name}?`, t.id === 'glb' || t.id === 'gltf' || t.id === 'usdz' ? `Yes. ${t.name} is defined in metres, so the model is converted from its own unit. Check the unit shown after opening, especially for formats without units such as STL.` : t.id === '3mf' ? '3MF declares its unit, so slicers read the real size.' : `${t.name} files store no units; the numbers are written in millimetres by default, which slicers expect. You can choose another unit in the export window.`],
+        [`Will the size be correct in ${t.name}?`, ['glb', 'gltf', 'usdz', 'x3d', 'wrl'].includes(t.id) ? `Yes. ${t.name} is defined in metres, so the model is converted from its own unit. Check the unit shown after opening, especially for formats without units such as STL.` : t.id === '3mf' || t.id === 'amf' ? `${t.name} declares its unit, so slicers read the real size.` : t.id === 'dxf' ? 'The DXF records the drawing unit ($INSUNITS) and the numbers are written in the unit you choose in the export window.' : `${t.name} files store no units. STL numbers are written in millimetres by default, which slicers expect; you can choose another unit in the export window.`],
         ['Can I convert several files at once?', 'Yes: use the batch converter in the Tools menu to convert many files into one ZIP.'],
         COMMON_FAQ[2],
+      ],
+    });
+  }
+
+  if (!L) for (const g of GUIDES) {
+    const exts = g.ext.map((e) => '.' + e).join(' / ');
+    add({
+      slug: `${g.key}-file`, kind: 'guide', key: g.key,
+      title: `${g.ext[0].toUpperCase()} File: How to View & Convert ${g.name} Files Free`,
+      desc: `What a ${exts} (${g.name}) file is, why browsers can't read it, and how to export it as ${g.export} to view, measure and convert it free, with nothing uploaded.`,
+      h1: `${esc(g.name)} <span class="glow">${esc(exts)}</span> files.`,
+      lede: `${g.name} files can only be read by ${g.name}. Export a ${g.export} copy in a few clicks, then view, measure, repair and convert it here, without uploading anything. Drop the ${exts} file below to see the preview stored inside.`,
+      config: { kind: 'guide', from: g.key },
+      copy: [
+        [`What is a ${g.ext[0].toUpperCase()} file?`, [g.about]],
+        ['Why can\'t a browser open it?', [g.why]],
+        [`How to open a ${g.name} file here`, null, g.how],
+        ...(g.free ? [['No licence?', [g.free]]] : []),
+      ],
+      related: CONVERSIONS.filter(([a]) => g.export.toLowerCase().includes(FORMATS[a]?.name.toLowerCase() || '#')).slice(0, 6).map(([a, b]) => ({ href: `${a}-to-${b}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` })),
+      faq: [
+        [`Can I open an ${g.ext[0].toUpperCase()} file without ${g.name}?`, `Not its exact geometry: it needs ${g.name}${g.free ? ' (see the free route above)' : ''}. Online viewers that claim to open it upload it to a server to translate it. Export ${g.export} (or ${g.alt}) instead and open that here.`],
+        [`What is the best format to export from ${g.name}?`, `${g.export} keeps the most. ${g.alt} also opens here.`],
+        ...COMMON_FAQ.slice(1, 3),
       ],
     });
   }
@@ -190,7 +215,7 @@ function toolsGrid(lang) {
   const pre = prefix(lang);
   const L = LANGS[lang];
   return `<div class="tools-grid">
-    <a class="tool-tile" href="${pre || './'}"><i data-icon="eye"></i><b>${L ? L.ui.viewer3d : '3D viewer'}</b><span>${L ? L.ui.viewer3dShort : 'Open 30+ formats'}</span></a>
+    <a class="tool-tile" href="${pre || './'}"><i data-icon="eye"></i><b>${L ? L.ui.viewer3d : '3D viewer'}</b><span>${L ? L.ui.viewer3dShort : 'Open and convert 44 file types'}</span></a>
     ${TOOLS.map((t) => { const tr = toolTr(lang, t.slug); return `<a class="tool-tile" href="${pre}${t.slug}/"><i data-icon="${t.icon}"></i><b>${esc(tr ? tr.label : t.label)}</b><span>${esc(tr ? tr.short : t.short)}</span></a>`; }).join('\n    ')}
   </div>`;
 }
@@ -227,6 +252,16 @@ function renderSeo(page) {
 </section>`;
 }
 
+/**
+ * Search-engine ownership tags, from environment variables at build time (set them in the GitHub Actions
+ * secrets or your shell): GOOGLE_SITE_VERIFICATION, BING_SITE_VERIFICATION, YANDEX_VERIFICATION.
+ * Only needed for the "HTML tag" method; a DNS TXT record (Cloudflare) needs nothing here.
+ */
+function verificationMeta() {
+  const tags = [['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION], ['msvalidate.01', process.env.BING_SITE_VERIFICATION], ['yandex-verification', process.env.YANDEX_VERIFICATION]];
+  return tags.filter(([, v]) => v).map(([n, v]) => `<meta name="${n}" content="${esc(v)}" />\n    `).join('');
+}
+
 function jsonLd(page) {
   const app = {
     '@context': 'https://schema.org',
@@ -259,7 +294,7 @@ const UI_STRINGS = (L) => [
   ['<span class="card-title">Start an empty scene</span>', `<span class="card-title">${L.ui.empty}</span>`],
   ['<span class="ex-label">Try an example:</span>', `<span class="ex-label">${L.ui.example}</span>`],
   ['<strong>Completely free. No ads. Open source.</strong>', `<strong>${L.ui.freeTitle}</strong>`],
-  ['<span>To support hosting and development, donations are welcome.</span>', `<span>${L.ui.freeSub}</span>`],
+  ['<span>No ads, no accounts, no tracking. If it saves you time, you can help keep it that way.</span>', `<span>${L.ui.freeSub}</span>`],
 ];
 
 /** Fills the index.html template for one page. */
@@ -282,7 +317,7 @@ export function renderPage(html, page) {
     <meta property="og:image" content="${SITE_URL}${ogName(page)}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    ${jsonLd(page)}
+    ${verificationMeta()}${jsonLd(page)}
     <!--/head-extra-->`);
   rep(/<!--hero-->[\s\S]*?<!--\/hero-->/, `<!--hero-->
             <h1>${page.h1}</h1>
@@ -327,13 +362,18 @@ export function ogSvg(page) {
 </svg>`;
 }
 
+/** Last change to the page content (the landing-page data and generator), not the build date, so lastmod stays truthful. */
+const CONTENT_DATE = (() => {
+  try { return execSync('git log -1 --format=%cs -- scripts/seo-data.mjs scripts/seo.mjs scripts/i18n.mjs', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || null; } catch { return null; }
+})();
+
 export function sitemap() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = CONTENT_DATE || new Date().toISOString().slice(0, 10);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${PAGES.map((p) => {
     const sibs = PAGES.filter((q) => q.slug === p.slug && q.kind === p.kind);
-    return `  <url><loc>${url(p)}</loc><lastmod>${today}</lastmod><priority>${p.kind === 'home' ? '1.0' : p.kind === 'tool' ? '0.9' : '0.8'}</priority>${sibs.map((q) => `<xhtml:link rel="alternate" hreflang="${q.lang}" href="${url(q)}"/>`).join('')}</url>`;
+    return `  <url><loc>${url(p)}</loc><lastmod>${today}</lastmod><priority>${p.kind === 'home' ? '1.0' : p.kind === 'tool' ? '0.9' : p.kind === 'guide' ? '0.7' : '0.8'}</priority>${sibs.map((q) => `<xhtml:link rel="alternate" hreflang="${q.lang}" href="${url(q)}"/>`).join('')}</url>`;
   }).join('\n')}
 </urlset>
 `;

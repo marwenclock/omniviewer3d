@@ -962,3 +962,134 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   .drop-zone { padding: 22px 14px; }
   .tree-tools input { height: 40px; font-size: 16px; }
 }
+
+/* =====================================================================================================
+   OMNIVIEWER ACCENT (2026-11 refresh): a monochrome "signal" (white on dark, black on light) for the primary
+   action, focus, the selected format and the active workspace. The welcome keeps a soft gradient backdrop.
+   ===================================================================================================== */
+:root {
+  --signal: #ffffff;
+  --signal-ink: #0a0a0a;      /* text on a signal background */
+  --signal-soft: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='light'] {
+  --signal: #101010;
+  --signal-ink: #ffffff;
+  --signal-soft: rgba(0, 0, 0, 0.05);
+}
+.welcome {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 0%, rgba(255, 255, 255, 0.07), transparent 65%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(255, 255, 255, 0.035), transparent 60%),
+    var(--bg);
+}
+:root[data-theme='light'] .welcome {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 0%, rgba(255, 255, 255, 0.9), transparent 65%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(0, 0, 0, 0.04), transparent 60%),
+    var(--bg);
+}
+
+/* Task chips: "What do you want to do?" */
+.tasks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 6px; }
+.tasks-label { width: 100%; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.task {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 500;
+  transition: border-color 0.15s, background 0.15s;
+}
+.task .icon { width: 16px; height: 16px; }
+.task:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.task-primary { background: var(--signal); color: var(--signal-ink); border-color: transparent; font-weight: 600; }
+.task-primary:hover { background: var(--signal); filter: brightness(1.06); }
+.task-ghost { border-style: dashed; color: var(--ink-2); }
+@media (max-width: 640px) { .task { height: 40px; } .tasks-label { margin-top: 4px; } }
+
+/* Header support */
+.tb-support .icon { color: var(--signal); }
+.tb-support span { margin-left: 2px; }
+@media (max-width: 1100px) { .tb-support span { display: none; } }
+@media (max-width: 760px) { .tb-support { display: none; } }
+
+/* Converter picker */
+.conv-from { margin: -4px 0 12px; font-size: 13px; }
+.conv-pick { display: flex; flex-direction: column; min-width: 0; }
+.conv-search {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1px solid var(--line-2);
+  border-radius: 10px; background: var(--surface); position: sticky; top: 0;
+}
+.conv-search:focus-within { border-color: var(--signal); }
+.conv-search .icon { width: 16px; height: 16px; color: var(--muted); }
+.conv-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 14px; height: 100%; }
+.conv-list { margin-top: 8px; }
+.conv-sec { font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); padding: 10px 2px 2px; }
+.conv-sec[data-sec='rec'] { color: var(--signal); }
+.conv-none { color: var(--muted); font-size: 13px; padding: 12px 4px; }
+.export-opt[aria-checked='true'] { border-color: var(--signal); box-shadow: inset 0 0 0 1px var(--signal); }
+
+/* Support dialog */
+.support-box { border: 1px solid var(--line-2); border-radius: var(--radius-lg); padding: 14px 16px; margin: 12px 0; background: var(--signal-soft); }
+.support-box > b { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.support-box > b .icon { color: var(--signal); width: 16px; height: 16px; }
+.support-box .btn-solid[disabled] { opacity: 0.75; cursor: default; }
+
+/* Closed-format helper and format catalogue */
+.prop-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: start; }
+.prop-preview { aspect-ratio: 1; border: 1px solid var(--line-2); border-radius: var(--radius-lg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; text-align: center; font-size: 12px; background: var(--surface); overflow: hidden; }
+.prop-preview img { max-width: 100%; max-height: 82%; object-fit: contain; border-radius: 6px; }
+.prop-steps { border-left: 2px solid var(--signal); padding-left: 12px; margin-top: 10px; }
+.prop-steps ol { margin: 6px 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; }
+@media (max-width: 640px) { .prop-layout { grid-template-columns: 1fr; } .prop-preview { aspect-ratio: 16 / 10; } }
+.fmt-search { width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); margin-bottom: 12px; }
+.fmt-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-height: 62vh; overflow: auto; }
+.fmt-cols h3 { font-size: 13px; margin: 0 0 8px; }
+.fmt-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
+@media (max-width: 760px) { .fmt-cols { grid-template-columns: 1fr; } }
+
+/* Bracketed labels ([parts], [details], [settings], [open]): brighter, larger and bolder so they read as headings. */
+.side-tab { font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.side-tab:hover { color: var(--ink); }
+.side-tab.active { color: var(--hi); font-weight: 700; border-bottom-width: 2px; }
+.drop-zone .card-label { font: 600 13.5px var(--font); color: var(--ink-2); }
+@media (max-width: 760px) { .side-tab { font-size: 14px; } }
+
+/* Toolbar overflow: tools that don't fit drop down in a flat strip under the toolbar (slicer-style). */
+.tb-overflow { flex: none; gap: 4px; }
+.tb-overflow-count { font: 600 10.5px var(--font); color: var(--muted); }
+.tb-overflow.active { background: var(--surface-3); color: var(--ink); }
+.toolbar .tb-more-wrap { flex: none; }
+.tb-strip {
+  position: fixed; z-index: 55; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; padding: 4px;
+  max-width: calc(100vw - 16px); background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px;
+}
+.tb-strip .tb-group { border-left: 1px solid var(--line); }
+.tb-strip .tb-group:first-child { border-left: 0; }
+@media (max-width: 700px) { .tb-strip, .tb-overflow { display: none !important; } }
+.tb-overflow { position: relative; }
+.tb-overflow.has-active::after { content: ''; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+
+/* Give the toolbar more room: shorter model name area, Support label only on wide screens. */
+.model-bar { max-width: min(220px, 15vw); }
+@media (max-width: 1600px) { .tb-support span { display: none; } }
+
+/* File actions (Open, Open URL, New) live top-left next to the logo, where file commands usually are. */
+.file-actions { display: flex; align-items: center; gap: 2px; flex: none; padding-left: 10px; border-left: 1px solid var(--line); }
+.file-actions .tb > span { white-space: nowrap; }
+@media (max-width: 1100px) { .file-actions .tb > span { display: none; } }
+@media (max-width: 700px) {
+  .file-actions { border-left: 0; padding-left: 0; }
+  .file-actions [data-action='url'], .file-actions [data-action='new'] { display: none; }
+  body.has-model .file-actions { display: none; }
+}
+
+/* Unsaved changes: a labelled save chip instead of a bare dot; clicking it saves a project. */
+.mb-dirty {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; flex: none;
+  border: 1px solid var(--warn); border-radius: 999px; color: var(--warn); font: 600 11.5px var(--font);
+}
+.mb-dirty .icon { width: 13px; height: 13px; }
+.mb-dirty:hover { background: var(--surface-2); }
+@media (max-width: 900px) { .mb-dirty span { display: none; } .mb-dirty { padding: 0 6px; } }
+.export-opt.is-blocked { opacity: 0.5; }
+.export-opt.is-blocked small { color: var(--warn); }
+#expExt { flex: none; width: auto; }

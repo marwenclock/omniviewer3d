@@ -244,7 +244,7 @@ function exportOutline(kind: 'svg' | 'dxf') {
 // ------------------------------------------------------------------ panel
 registerPanel({
   id: 'cut', label: 'Cut / split', icon: 'cut',
-  hint: 'Position the plane, then cut: both halves are closed with a flat face',
+  hint: 'Position the plane, then cut: each half gets a flat face and is checked',
   onActivate: () => { if (!ctx.viewer.section.enabled) ctx.viewer.setSection({ enabled: true }); },
   render() {
     const s = ctx.viewer.section;
