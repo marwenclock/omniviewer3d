@@ -694,8 +694,8 @@ function runAction(a: string) {
     case 'recipes': showRecipes(); break;
     case 'storagehelp': showHelpCentre('storage'); break;
     case 'sample': openSample(); break;
-    case 'convertfile': openQuickConvert(); ($('#fileInput') as HTMLInputElement).click(); break;
-    case 'closeqc': closeQuickConvert(); break;
+    case 'convertfile': case 'modeconvert': openQuickConvert(); break;
+    case 'closeqc': case 'modeview': closeQuickConvert(); break;
     case 'formats': showFormatsDialog(); break;
   }
 }

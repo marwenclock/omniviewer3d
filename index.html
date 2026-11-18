@@ -204,6 +204,10 @@
               <h1>Every 3D file.<br />One free <span class="glow">toolkit</span>.</h1>
               <p class="lede">Open and convert 44 file types, then measure, repair and edit, right in your browser. Nothing is uploaded. No ads, no sign-up.</p>
               <!--/hero-->
+              <div class="mode-switch" role="group" aria-label="Open files to">
+                <button data-action="modeview" id="modeView" aria-pressed="true"><i data-icon="cube"></i><span data-i18n="View &amp; edit in 3D">View &amp; edit in 3D</span></button>
+                <button data-action="modeconvert" id="modeConvert" aria-pressed="false"><i data-icon="swap"></i><span data-i18n="Convert files">Convert files</span></button>
+              </div>
               <button class="drop-zone" id="dropZone" data-action="open">
                 <span class="card-label">[open]</span>
                 <span class="dz-title" id="dzTitle">Drop a model, folder or ZIP</span>
@@ -212,7 +216,7 @@
                 <span class="dz-paste" data-i18n="or paste files with Ctrl+V">or paste files with Ctrl+V</span>
               </button>
               <div class="qc" id="qcHost" aria-live="polite"></div>
-              <p class="qc-note">Converted on your device, never uploaded. <button class="link-btn" data-action="closeqc" data-i18n="Use the 3D viewer instead">Use the 3D viewer instead</button></p>
+              <p class="qc-note" data-i18n="Converted on your device, never uploaded.">Converted on your device, never uploaded.</p>
               <div class="tasks" role="group" aria-label="What do you want to do?">
                 <span class="tasks-label" data-i18n="What do you want to do?">What do you want to do?</span>
                 <button class="task task-primary" data-action="convertfile"><i data-icon="swap"></i><span data-i18n="Convert a file">Convert a file</span></button>

@@ -500,13 +500,30 @@ export function openQuickConvert(o: { to?: ExportId; instant?: boolean } = {}) {
     host?.addEventListener('change', onChange);
     host?.addEventListener('input', (e) => { const el = e.target as HTMLInputElement; if (el.dataset.opt === 'reduce') { const out = el.parentElement?.querySelector('output'); if (out) out.textContent = el.value + '%'; } });
   }
-  const dz = document.getElementById('dzTitle');
-  if (dz && !o.to) dz.textContent = t('Drop files to convert');
+  // Instant converter pages (stl-to-obj…) keep their own wording; everywhere else the drop zone says what it does.
+  if (instant) { if (pageWording) setDropZone(...pageWording); } // the page sets its own wording on load
+  else setDropZone(t('Drop files to convert'), t('Choose files to convert'));
+  syncModeSwitch();
   render();
 }
 export function closeQuickConvert() {
   document.body.classList.remove('qc-open');
   closePicker();
+  if (instant && !pageWording) pageWording = [document.getElementById('dzTitle')?.textContent || '', document.getElementById('dzBtn')?.textContent || ''];
+  setDropZone(t('Drop a model, folder or ZIP'), t('Open 3D files'));
+  syncModeSwitch();
+}
+let pageWording: [string, string] | null = null;
+function setDropZone(title: string, btn: string) {
+  const ti = document.getElementById('dzTitle'), b = document.getElementById('dzBtn');
+  if (ti) ti.textContent = title;
+  if (b) b.textContent = btn;
+}
+/** The "View & edit in 3D | Convert files" switch above the drop zone. */
+function syncModeSwitch() {
+  const on = qcIsOpen();
+  document.getElementById('modeView')?.setAttribute('aria-pressed', String(!on));
+  document.getElementById('modeConvert')?.setAttribute('aria-pressed', String(on));
 }
 
 document.addEventListener('click', (e) => {
@@ -530,7 +547,7 @@ async function takeSharedFiles() {
 const history_replace = () => { try { window.history.replaceState(null, '', location.pathname); } catch { /* ignore */ } };
 
 export function initQuickConvert() {
-  registerCommand({ id: 'quickconvert', label: 'Quick convert files (no viewer)…', group: 'File', keywords: 'convert export batch fast simple without preview', run: () => { openQuickConvert(); document.getElementById('fileInput')?.click(); } });
+  registerCommand({ id: 'quickconvert', label: 'Quick convert files (no viewer)…', group: 'File', keywords: 'convert export batch fast simple without preview', run: () => openQuickConvert() });
   void takeSharedFiles();
   let was: string | null = null;
   try { was = sessionStorage.getItem(READING); } catch { /* storage blocked */ }

@@ -832,6 +832,11 @@ body.gl-lost .viewport { filter: grayscale(1) opacity(0.4); }
 .welcome-inner > .formats, .welcome-inner > .seo, .welcome-inner > .free-note, .welcome-inner > section { grid-column: 1 / -1; }
 .welcome h1 { font-size: clamp(30px, 4.2vw, 50px); margin-bottom: 12px; }
 .lede { margin-bottom: 20px; }
+.mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); }
+.mode-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.mode-switch button:hover { color: var(--hi); }
+.mode-switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.mode-switch .icon { width: 17px; height: 17px; }
 .drop-zone {
   width: 100%; display: grid; justify-items: center; gap: 8px; padding: 30px 20px; border-radius: var(--radius-lg);
   border: 1.5px dashed var(--line-strong); background: var(--surface); text-align: center; transition: border-color 0.15s, background 0.15s;
