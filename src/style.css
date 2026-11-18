@@ -1152,7 +1152,8 @@ body.qc-open .drop-zone { min-height: 0; padding: 22px; }
 .qc-arrow { color: var(--muted); font-size: 14px; }
 .qc-ext { height: 32px; font-size: 12px; }
 .qc-actions { display: inline-flex; align-items: center; gap: 8px; }
-.qc-actions .btn-solid.small, .qc-actions .btn-outline.small { height: 32px; padding: 0 12px; }
+.qc-actions .btn-solid.small, .qc-actions .btn-outline.small { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.qc-actions .btn-outline.small svg { width: 16px; height: 16px; }
 .qc-x { color: var(--muted); padding: 4px; }
 .qc-x .icon { width: 14px; height: 14px; }
 .qc-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }

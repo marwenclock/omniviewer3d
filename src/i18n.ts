@@ -280,6 +280,7 @@ const ROWS: [string, string, string, string, string][] = [
   ['Convert all', 'Convertir todo', 'Alle konvertieren', 'Tout convertir', 'Converter tudo'],
   ['Download all (ZIP)', 'Descargar todo (ZIP)', 'Alle herunterladen (ZIP)', 'Tout télécharger (ZIP)', 'Baixar tudo (ZIP)'],
   ['Open in viewer', 'Abrir en el visor', 'Im Viewer öffnen', 'Ouvrir dans la visionneuse', 'Abrir no visualizador'],
+  ['Open 3D view', 'Abrir vista 3D', '3D-Ansicht öffnen', 'Ouvrir la vue 3D', 'Abrir vista 3D'],
   ['Reading…', 'Leyendo…', 'Wird gelesen…', 'Lecture…', 'Lendo…'],
   ['Converting…', 'Convirtiendo…', 'Wird konvertiert…', 'Conversion…', 'Convertendo…'],
   ['guessed', 'estimado', 'geschätzt', 'estimé', 'estimado'],

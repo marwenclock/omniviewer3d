@@ -292,7 +292,7 @@ function rowHtml(r: Row) {
     <div class="qc-actions">
       ${r.status === 'done' ? `<button class="btn-solid small" data-dl="${r.id}">${icon('download')} ${t('Download')}</button>${canShareFiles() ? `<button class="btn-outline small" data-share="${r.id}">${icon('share')}</button>` : ''}`
         : `<button class="btn-solid small" data-convert="${r.id}" ${r.obj && !blocked && r.status !== 'converting' ? '' : 'disabled'}>${needsUnitConfirm(r) && instant ? t('Confirm & download') : t('Convert')}</button>`}
-      <button class="link-btn" data-view="${r.id}" ${r.obj ? '' : 'disabled'}>${t('Open in viewer')}</button>
+      <button class="btn-outline small" data-view="${r.id}" ${r.obj ? '' : 'disabled'}>${icon('cube')} ${t('Open 3D view')}</button>
       <button class="qc-x" data-remove="${r.id}" aria-label="${t('Remove')} ${escHtml(r.name)}">${icon('x')}</button>
     </div>
   </li>`;
