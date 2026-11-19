@@ -213,6 +213,8 @@ export interface ExportOptions {
   relMatrix?: THREE.Matrix4;
   /** 3MF: write per-triangle colours from painted vertex colours */
   perTriangleColors?: boolean;
+  /** project files only: keep each node's `userData.ovId` and mark the model root, so a reopen can restore by identity */
+  keepIds?: boolean;
 }
 
 /** The unit numbers are written in for this format (null = the format stores real metres). */
@@ -255,8 +257,12 @@ export function buildExportGraph(root: THREE.Object3D, id: ExportId, opts: Expor
   drop.forEach((o) => o.removeFromParent());
   copy.traverse((o) => {
     o.visible = true;
-    o.userData = {}; // internal state (explode bases, Rhino settings, ...) must not leak into files (CA-04)
+    // Internal state (explode bases, Rhino settings, ...) must not leak into files (CA-04). Project files keep
+    // only a stable node id, so hidden parts are restored by identity rather than by name (F03).
+    const id = o.userData.ovId;
+    o.userData = opts.keepIds && id !== undefined ? { ovId: id } : {};
   });
+  if (opts.keepIds) copy.userData.ovRoot = true;
   const wrapper = new THREE.Group();
   wrapper.name = root.name || 'model';
   wrapper.add(copy);

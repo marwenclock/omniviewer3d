@@ -59,6 +59,25 @@ const FORMAT_NOTES = {
   md2: ['Keyframe animation plays in the viewer.'],
 };
 
+/**
+ * Address of a conversion page. A tool can own the obvious slug (stl-to-dxf is the section-outline tool, the URL
+ * production has always served); the whole-model conversion then lives at stl-to-3d-dxf (audit F04).
+ */
+const TOOL_SLUGS = new Set(TOOLS.map((t) => t.slug));
+export const convSlug = (a, b) => (TOOL_SLUGS.has(`${a}-to-${b}`) ? `${a}-to-3d-${b}` : `${a}-to-${b}`);
+
+/** One line that tells DXF visitors which of the two DXF tasks they are on, and links the other (F04). */
+const DXF_XLINK = {
+  en: { conv: (pre) => `Need a flat 2D outline for a laser cutter or CNC router instead? Use <a href="${pre}stl-to-dxf/">section to DXF / SVG</a>: it cuts the model with a plane and saves the outline at real size.`, tool: (pre) => `Need the whole model as 3D faces in CAD instead of one outline? Use the <a href="${pre}stl-to-3d-dxf/">STL to 3D DXF converter</a>.` },
+  es: { conv: (pre) => `¿Necesitas un contorno 2D plano para láser o CNC? Usa <a href="${pre}stl-to-dxf/">sección a DXF / SVG</a>: corta el modelo con un plano y guarda el contorno a tamaño real.`, tool: (pre) => `¿Necesitas el modelo completo como caras 3D en CAD? Usa el <a href="${pre}stl-to-3d-dxf/">conversor de STL a DXF 3D</a>.` },
+  de: { conv: (pre) => `Brauchen Sie eine flache 2D-Kontur für Laser oder CNC? Nutzen Sie <a href="${pre}stl-to-dxf/">Schnitt zu DXF / SVG</a>: Es schneidet das Modell mit einer Ebene und speichert die Kontur in echter Größe.`, tool: (pre) => `Brauchen Sie das ganze Modell als 3D-Flächen im CAD? Nutzen Sie den <a href="${pre}stl-to-3d-dxf/">STL-zu-3D-DXF-Konverter</a>.` },
+  fr: { conv: (pre) => `Besoin d’un contour 2D plat pour une découpe laser ou CNC ? Utilisez <a href="${pre}stl-to-dxf/">coupe vers DXF / SVG</a> : il coupe le modèle par un plan et enregistre le contour à taille réelle.`, tool: (pre) => `Besoin du modèle entier en faces 3D dans un logiciel de CAO ? Utilisez le <a href="${pre}stl-to-3d-dxf/">convertisseur STL vers DXF 3D</a>.` },
+  pt: { conv: (pre) => `Precisa de um contorno 2D plano para laser ou CNC? Use <a href="${pre}stl-to-dxf/">seção para DXF / SVG</a>: corta o modelo com um plano e salva o contorno em tamanho real.`, tool: (pre) => `Precisa do modelo inteiro como faces 3D no CAD? Use o <a href="${pre}stl-to-3d-dxf/">conversor de STL para DXF 3D</a>.` },
+};
+/** Label for a language whose version of a page doesn't exist: the link then goes to that language's home (F05). */
+const HOME_WORD = { en: 'home', es: 'inicio', de: 'Startseite', fr: 'accueil', pt: 'início' };
+const ONLY_EN = { en: 'This guide is in English.', es: 'Esta guía está en inglés.', de: 'Diese Anleitung ist auf Englisch.', fr: 'Ce guide est en anglais.', pt: 'Este guia está em inglês.' };
+
 const toolTr = (lang, slug) => {
   if (lang === 'en') return null;
   const t = LANGS[lang].tools[slug];
@@ -87,7 +106,7 @@ function buildPages(lang) {
 
   for (const [key, f] of Object.entries(FORMATS)) {
     const exts = extList(f, key);
-    const related = CONVERSIONS.filter(([a]) => a === key).map(([a, b]) => ({ href: `${a}-to-${b}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` }));
+    const related = CONVERSIONS.filter(([a]) => a === key).map(([a, b]) => ({ href: `${convSlug(a, b)}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` }));
     const nm = NO_MESH[key];
     add(L ? {
       slug: `${key}-viewer`, kind: 'viewer', key,
@@ -133,30 +152,30 @@ function buildPages(lang) {
   for (const [from, to] of CONVERSIONS) {
     const f = FORMATS[from], t = TARGETS[to];
     const related = CONVERSIONS.filter(([a, b]) => (a === from || b === to) && !(a === from && b === to)).slice(0, 8)
-      .map(([a, b]) => ({ href: `${a}-to-${b}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` }))
+      .map(([a, b]) => ({ href: `${convSlug(a, b)}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` }))
       .concat([{ href: `${from}-viewer/`, label: L ? `${L.ui.viewer3d}: ${f.name}` : `${f.name} viewer` }]);
     add(L ? {
-      slug: `${from}-to-${to}`, kind: 'convert', key: from,
+      slug: convSlug(from, to), kind: 'convert', key: from,
       title: L.convert.title(f.name, t.name), desc: L.convert.desc(f.name, t.name), h1: L.convert.h1(esc(f.name), esc(t.name)), lede: L.convert.lede(f.name, t.name),
       config: { kind: 'convert', from, to: t.id },
       copy: [[L.convert.how(f.name, t.name), null, L.convert.steps(f.name, t.name)], [L.convert.about(f.name, t.name), [L.formats[from] || f.about, L.targets[to] || t.note]]],
       related, faq: [...L.convert.faq(f.name, t.name), L.common[2]],
     } : {
-      slug: `${from}-to-${to}`, kind: 'convert', key: from,
+      slug: convSlug(from, to), kind: 'convert', key: from,
       title: `Convert ${f.name} to ${t.name} Online · Free ${f.name} to ${t.name} Converter`,
       desc: `Convert ${f.name} (${extList(f, from)}) to ${t.name} free in your browser. No upload, no sign-up, no ads. Preview, scale and fix the model before you download.`,
       h1: `Convert <span class="glow">${esc(f.name)} to ${esc(t.name)}</span>.`,
       lede: `Drop a ${f.name} file, check it, and download it as ${t.name}. The real size is kept when the file declares its units; otherwise you confirm them first. Conversion happens on your device, so your file is not uploaded.`,
       config: { kind: 'convert', from, to: t.id },
       copy: [
-        [`How to convert ${f.name} to ${t.name}`, null, [`Click <b>Open</b> above, or drag your ${f.name} file onto this page.`, 'Check the preview and the size. Optionally confirm units, repair it or hide parts you don\'t want.', `The export window opens with <b>${t.name}</b> selected and shows what is kept and lost, the real size and the orientation. Click Download.`]],
+        [`How to convert ${f.name} to ${t.name}`, null, [`Click the button above, or drag your ${f.name} file onto this page.`, 'If the file doesn’t record its real size, confirm its unit (mm, inches…) on the file’s row. The row shows the size that will be written into the file.', `Download the <b>${t.name}</b> file. Use <b>Open result</b> to check it, or <b>Open in full viewer &amp; editor</b> to scale, repair or hide parts first.`]],
         [`About ${f.name} and ${t.name}`, [f.about, t.note, ...(FORMAT_NOTES[from] || [])]],
       ],
       related,
       faq: [
         [`Is this ${f.name} to ${t.name} converter free?`, 'Yes, free with no watermarks or sign-up.'],
         [`Will my ${f.name} file be uploaded?`, 'No. The conversion runs in your browser; the file is not sent to a server.'],
-        [`Will the size be correct in ${t.name}?`, ['glb', 'gltf', 'usdz', 'x3d', 'wrl'].includes(t.id) ? `Yes. ${t.name} is defined in metres, so the model is converted from its own unit. Check the unit shown after opening, especially for formats without units such as STL.` : t.id === '3mf' || t.id === 'amf' ? `${t.name} declares its unit, so slicers read the real size.` : t.id === 'dxf' ? 'The DXF records the drawing unit ($INSUNITS) and the numbers are written in the unit you choose in the export window.' : `${t.name} files store no units. STL numbers are written in millimetres by default, which slicers expect; you can choose another unit in the export window.`],
+        [`Will the size be correct in ${t.name}?`, ['glb', 'gltf', 'usdz', 'x3d', 'wrl'].includes(t.id) ? `Yes. ${t.name} is defined in metres, so the model is converted from its own unit. Check the unit shown after opening, especially for formats without units such as STL.` : t.id === '3mf' || t.id === 'amf' ? `${t.name} declares its unit, so slicers read the real size.` : t.id === 'dxf' ? 'The DXF records the drawing unit ($INSUNITS) and the numbers are written in the file’s unit unless you pick another under Options.' : `${t.name} files store no units. STL numbers are written in millimetres by default, which slicers expect; you can pick another unit under Options.`],
         ['Can I convert several files at once?', 'Yes: use the batch converter in the Tools menu to convert many files into one ZIP.'],
         COMMON_FAQ[2],
       ],
@@ -178,7 +197,7 @@ function buildPages(lang) {
         [`How to open a ${g.name} file here`, null, g.how],
         ...(g.free ? [['No licence?', [g.free]]] : []),
       ],
-      related: CONVERSIONS.filter(([a]) => g.export.toLowerCase().includes(FORMATS[a]?.name.toLowerCase() || '#')).slice(0, 6).map(([a, b]) => ({ href: `${a}-to-${b}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` })),
+      related: CONVERSIONS.filter(([a]) => g.export.toLowerCase().includes(FORMATS[a]?.name.toLowerCase() || '#')).slice(0, 6).map(([a, b]) => ({ href: `${convSlug(a, b)}/`, label: `${FORMATS[a].name} → ${TARGETS[b].name}` })),
       faq: [
         [`Can I open an ${g.ext[0].toUpperCase()} file without ${g.name}?`, `Not its exact geometry: it needs ${g.name}${g.free ? ' (see the free route above)' : ''}. Online viewers that claim to open it upload it to a server to translate it. Export ${g.export} (or ${g.alt}) instead and open that here.`],
         [`What is the best format to export from ${g.name}?`, `${g.export} keeps the most. ${g.alt} also opens here.`],
@@ -195,7 +214,7 @@ function buildPages(lang) {
       desc: tr ? tr.desc : t.desc,
       h1: tr ? tr.h1 : t.h1,
       lede: tr ? tr.lede : t.lede,
-      config: { kind: 'tool', tool: t.tool },
+      config: { kind: 'tool', tool: t.tool, slug: t.slug },
       copy: [[strip(tr ? tr.title : t.title).split('·')[0].trim(), tr ? [tr.desc] : t.body]],
       faq: L ? L.common : COMMON_FAQ,
     });
@@ -203,7 +222,29 @@ function buildPages(lang) {
   return pages;
 }
 
-export const PAGES = LANG_CODES.flatMap(buildPages);
+/** Cross-links between the two DXF tasks, placed in the lede so they are the first thing a DXF visitor reads. */
+function addDxfLinks(pages) {
+  for (const p of pages) {
+    const pre = p.lang === 'en' ? '' : p.lang + '/';
+    const x = DXF_XLINK[p.lang];
+    if (p.kind === 'convert' && p.config.to === 'dxf') p.lede += ` <span class="xlink">${x.conv(pre)}</span>`;
+    if (p.kind === 'tool' && p.slug === 'stl-to-dxf') p.lede += ` <span class="xlink">${x.tool(pre)}</span>`;
+  }
+  return pages;
+}
+
+export const PAGES = addDxfLinks(LANG_CODES.flatMap(buildPages));
+
+// One page per address: two definitions writing the same path (or share image) fail the build instead of one
+// silently overwriting the other, as stl-to-dxf did (audit F04).
+{
+  const seen = new Map();
+  for (const p of PAGES) {
+    const path = (p.lang === 'en' ? '' : p.lang + '/') + (p.slug ? p.slug + '/' : '');
+    if (seen.has(path)) throw new Error(`Two pages claim /${path}: ${seen.get(path)} and ${p.kind}. Give one of them its own slug.`);
+    seen.set(path, p.kind);
+  }
+}
 
 // ------------------------------------------------------------------ rendering
 const prefix = (lang) => (lang === 'en' ? '' : lang + '/');
@@ -224,8 +265,12 @@ function linkDirectory(page) {
   const pre = prefix(page.lang);
   const L = LANGS[page.lang];
   const viewers = Object.entries(FORMATS).map(([k, f]) => `<a href="${pre}${k}-viewer/">${L ? esc(f.name) : `${esc(f.name)} viewer`}</a>`).join('');
-  const convs = CONVERSIONS.map(([a, b]) => `<a href="${pre}${a}-to-${b}/">${esc(FORMATS[a].name)} ${L ? '→' : 'to'} ${esc(TARGETS[b].name)}</a>`).join('');
-  const langs = LANG_CODES.map((l) => `<a href="${prefix(l)}${page.slug ? page.slug + '/' : (l === 'en' ? './' : '')}" hreflang="${l}" ${l === page.lang ? 'aria-current="page"' : ''}>${LANG_NAMES[l]}</a>`).join('');
+  const convs = CONVERSIONS.map(([a, b]) => `<a href="${pre}${convSlug(a, b)}/">${esc(FORMATS[a].name)} ${L ? '→' : 'to'} ${esc(TARGETS[b].name)}</a>`).join('');
+  // Only languages this page is published in; for the others, an honest link to that language's home (F05).
+  const has = new Set(PAGES.filter((p) => p.slug === page.slug && p.kind === page.kind).map((p) => p.lang));
+  const langs = LANG_CODES.map((l) => has.has(l)
+    ? `<a href="${prefix(l)}${page.slug ? page.slug + '/' : (l === 'en' ? './' : '')}" hreflang="${l}" ${l === page.lang ? 'aria-current="page"' : ''}>${LANG_NAMES[l]}</a>`
+    : `<a href="${prefix(l) || './'}" hreflang="${l}">${LANG_NAMES[l]} · ${HOME_WORD[l]}</a>`).join('') + (has.size === 1 && page.kind === 'guide' ? `<span class="muted">${ONLY_EN[page.lang]}</span>` : '');
   return `<nav class="seo-links" aria-label="All tools">
     <div><h3>${L ? L.ui.viewers : 'Viewers'}</h3><div class="link-cloud">${viewers}</div></div>
     <div><h3>${L ? L.ui.converters : 'Converters'}</h3><div class="link-cloud">${convs}</div></div>

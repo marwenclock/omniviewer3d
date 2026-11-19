@@ -167,6 +167,7 @@ export class MeasureTool {
       this.viewer.overlay.add(marker);
       this.markers.add(marker);
       this.pending = { p: h.p, n: h.n, marker, kind: h.kind };
+      this.emit(); // the step hint changes to "second point"
       return true;
     }
     this.finish(this.pending, h);

@@ -20,6 +20,8 @@ export interface AppContext {
   activeTool(): string;
   selectObject(o: THREE.Object3D | null): void;
   openFiles(files: File[], urls?: string[] | null): Promise<void>;
+  /** opens files with a unit already decided (Quick Convert), optionally as a new tab next to the open model */
+  openFilesWith(files: File[], given?: { unit: Unit; unitSource: import('./units').UnitSource; up?: 'y' | 'z' }, mode?: 'replace' | 'add' | 'tab'): Promise<void>;
   modelName(): string;
   /** stable identity of the open model (name + size) for saved views (OV-098) */
   modelId?(): string;

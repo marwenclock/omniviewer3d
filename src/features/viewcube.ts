@@ -24,13 +24,16 @@ export function initViewCube() {
   wrap.setAttribute('role', 'group');
   wrap.setAttribute('aria-label', t('View cube'));
   wrap.innerHTML = `<div class="vc-cube">${FACES.map(([v, label, tf]) => `<button class="vc-face" data-vcview="${v}" style="transform:${tf}" aria-label="${t(label)} ${t('view')}">${t(label)}</button>`).join('')}</div>
-    <button class="vc-iso" data-vcview="iso" aria-label="${t('Isometric view')}" title="${t('Isometric view')}">ISO</button>`;
+    <button class="vc-iso" data-vcview="iso" aria-label="${t('Isometric view')}" title="${t('Isometric view')} · ${t('Shift-click a face to turn without re-framing')}">ISO</button>`;
   stage.appendChild(wrap);
   ctx.viewer.showAxisHelper = false;
   ctx.viewer.requestRender();
   wrap.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-vcview]');
-    if (b && ctx.viewer.model) ctx.viewer.fit(ctx.viewer.model, b.dataset.vcview as ViewName);
+    if (!b || !ctx.viewer.model) return;
+    // Shift-click turns to that side but keeps the current zoom (inspecting a small part); a plain click frames the model.
+    if ((e as MouseEvent).shiftKey) ctx.viewer.orient(b.dataset.vcview as ViewName);
+    else ctx.viewer.fit(ctx.viewer.model, b.dataset.vcview as ViewName);
   });
   const cube = wrap.querySelector<HTMLElement>('.vc-cube')!;
   const m = new THREE.Matrix4();

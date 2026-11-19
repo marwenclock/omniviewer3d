@@ -67,7 +67,31 @@ const notFound = renderPage(template, {
   h1: 'Page not found.',
   lede: 'This address does not exist, or no longer does. Open a model below, or go to <a href="./">the home page</a> or <a href="convert/">the converter</a>.',
 }).replace('<head>', '<head>\n    <base href="/" />\n    <meta name="robots" content="noindex" />').replace(/<link rel="canonical"[^>]*>/, '');
-writeFileSync(join(dist, '404.html'), notFound);
+// Suggest the closest published page on the 404: the English version of a guide, a renamed page, or the nearest
+// match by the words in the address (audit D10). Plain script, runs before the app, from the list of published paths.
+const nfScript = `<script>(function () {
+  var P = ${JSON.stringify(PAGES.map(pagePath))};
+  var p = location.pathname.replace(/^[/]+/, ''); if (p && p.slice(-1) !== '/') p += '/';
+  var m = p.match(/^(es|de|fr|pt)[/](.*)$/), lang = m ? m[1] : '', rest = m ? m[2] : p;
+  var words = rest.split(/[^a-z0-9]+/).filter(Boolean), best = null, score = 0, english = false;
+  if (lang && P.indexOf(rest) >= 0) { best = rest; english = true; }
+  else P.forEach(function (q) {
+    var qm = q.match(/^(es|de|fr|pt)[/]/); if ((qm ? qm[1] : '') !== lang) return;
+    var qw = q.replace(/^(es|de|fr|pt)[/]/, '').split(/[^a-z0-9]+/).filter(Boolean), s = 0;
+    words.forEach(function (w) {
+      if (qw.indexOf(w) >= 0) s += w.length > 3 ? 2 : 1;
+      else if (w.length > 1 && qw.some(function (x) { return x.indexOf(w) === 0 || w.indexOf(x) === 0; })) s += 1;
+    });
+    if (words.length && qw[0] === words[0]) s += 3; // same source format or tool first word
+    if (words.length > 1 && qw[qw.length - 1] === words[words.length - 1]) s += 1;
+    if (s > score) { score = s; best = q; }
+  });
+  if (!best || (!english && score < 4)) return;
+  var el = document.createElement('p'); el.className = 'lede nf-suggest';
+  el.innerHTML = (english ? 'This page is available in English: ' : 'Were you looking for ') + '<a href="/' + best + '">/' + best + '</a>' + (english ? '' : '?');
+  var lede = document.querySelector('.welcome-main .lede'); if (lede) lede.after(el);
+})();</script>`;
+writeFileSync(join(dist, '404.html'), notFound.replace('</body>', nfScript + '</body>'));
 
 // Service worker: one cache per release, so updated engines in libs/ reach returning visitors (OV-082).
 const swPath = join(dist, 'sw.js');

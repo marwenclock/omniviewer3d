@@ -410,6 +410,22 @@ export class Viewer {
     this.controls.update();
   }
 
+  /** Turns the camera to a standard view around the current target, keeping the zoom and framing (D07). */
+  orient(view: ViewName) {
+    const dirs: Record<ViewName, THREE.Vector3> = {
+      front: new THREE.Vector3(0, 0, 1), back: new THREE.Vector3(0, 0, -1),
+      left: new THREE.Vector3(-1, 0, 0), right: new THREE.Vector3(1, 0, 0),
+      top: new THREE.Vector3(0, 1, 0.0001), bottom: new THREE.Vector3(0, -1, 0.0001),
+      iso: new THREE.Vector3(1, 0.75, 1.25),
+    };
+    const dist = this.perspective.position.distanceTo(this.controls.target);
+    this.perspective.position.copy(this.controls.target).addScaledVector(dirs[view].clone().normalize(), dist);
+    this.ortho.position.copy(this.perspective.position);
+    this.updateOrtho();
+    this.controls.update();
+    this.requestRender();
+  }
+
   setProjection(kind: 'perspective' | 'orthographic') {
     const next = kind === 'perspective' ? this.perspective : this.ortho;
     if (next === this.camera) return;

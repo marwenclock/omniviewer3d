@@ -219,7 +219,7 @@
               <p class="qc-note" data-i18n="Converted on your device, never uploaded.">Converted on your device, never uploaded.</p>
               <div class="tasks" role="group" aria-label="What do you want to do?">
                 <span class="tasks-label" data-i18n="What do you want to do?">What do you want to do?</span>
-                <button class="task task-primary" data-action="convertfile"><i data-icon="swap"></i><span data-i18n="Convert a file">Convert a file</span></button>
+                <button class="task" data-action="convertfile"><i data-icon="swap"></i><span data-i18n="Convert a file">Convert a file</span></button>
                 <button class="task" data-intent="measure"><i data-icon="ruler"></i><span data-i18n="View &amp; measure">View &amp; measure</span></button>
                 <button class="task" data-intent="repair"><i data-icon="repair"></i><span data-i18n="Prepare a print">Prepare a print</span></button>
                 <button class="task" data-action="batch"><i data-icon="batch"></i><span data-i18n="Convert many">Convert many</span></button>
@@ -290,6 +290,7 @@
     </nav>
     <footer class="statusbar" id="statusbar">
       <span id="statusLeft" role="status">Ready</span>
+      <span id="statusLast" class="status-last"></span>
       <span class="grow"></span>
       <button class="status-kbd" data-action="help" aria-label="Keyboard shortcuts"><span data-i18n="Shortcuts">Shortcuts</span> <kbd>?</kbd></button>
       <span id="statusRight"></span>

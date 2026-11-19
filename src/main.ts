@@ -36,4 +36,20 @@ function showNoWebGL(reason: string) {
 
 applyStaticI18n();
 if (!hasWebGL()) showNoWebGL(t('No WebGL context could be created.'));
-else import('./app').catch((e) => { console.error(e); showNoWebGL(String(e?.message || e)); });
+else import('./app').catch((e) => { console.error(e); showLoadFailed(String(e?.message || e)); });
+
+/** The app code failed to load or start, while 3D graphics work: say that, not "no WebGL" (audit F29).
+ *  The usual cause is a cached page from before an update, or a dropped connection. */
+function showLoadFailed(reason: string) {
+  const stale = /import|module|fetch|chunk|load/i.test(reason);
+  const host = document.querySelector('.welcome-inner') || document.body;
+  const box = document.createElement('div');
+  box.className = 'capability-note';
+  box.setAttribute('role', 'alert');
+  box.innerHTML = `<strong>${t('OMNIVIEWER could not start')}</strong>
+    <p>${stale ? t('Part of the app did not load. The site may have just been updated, or the connection dropped. Reloading usually fixes it.') : t('Something went wrong while starting. Reloading usually fixes it; if not, the readable guides below still work.')}</p>
+    <p><button class="btn-solid" id="retryLoad">${t('Reload')}</button></p>
+    <p class="note">${reason.replace(/[<>&]/g, '')}</p>`;
+  host.prepend(box);
+  document.getElementById('retryLoad')?.addEventListener('click', () => location.reload());
+}

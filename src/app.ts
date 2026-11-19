@@ -10,14 +10,14 @@ import { Editor, type Primitive, type GizmoMode } from './editor';
 import { MeasureTool } from './tools/measure';
 import { PaintTool } from './tools/paint';
 import { computeStats, checkClosedAsync, UNITS, type Unit, fmtLen, fmtNum, fmtInt, type ModelStats } from './stats';
-import { EXPORT_FORMATS, exportModel, download, describeExport, exportBlocker, staysYUp, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
+import { EXPORT_FORMATS, exportModel, exportObject, download, describeExport, exportBlocker, staysYUp, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
 import { icon, hydrateIcons } from './icons';
 import { CONFIG } from './config';
 import { panels, commands, registerCommand } from './registry';
 import { ctx } from './context';
 import { MATERIALS, estimate } from './cost';
 import { listRecent, addRecent, removeRecent, clearRecent, entryFiles, type RecentEntry } from './recent';
-import { guessUnit, defaultUp, rememberPref, forgetPref, rememberedPref, UNIT_SOURCE_LABEL, type UnitSource } from './units';
+import { guessUnit, defaultUp, rememberPref, forgetPref, rememberedPref, UNIT_SOURCE_LABEL, type UnitSource, type UnitGuess } from './units';
 import { initFeatures } from './features';
 import { capsEnabled, setCaps } from './features/caps';
 import { showBatchDialog } from './features/batch';
@@ -27,6 +27,7 @@ import { LOOKS, currentLook, setLook, BACKDROPS, setBackdrop, setShadow, shadowE
 import { CAD_QUALITY, cadQuality } from './cad';
 import { helpArticlesHtml, releaseNotesHtml } from './features/docs';
 import { ProprietaryFormatError, PROPRIETARY, extractPreview, type ProprietaryInfo } from './formats-extra';
+import { compareWith } from './features/compare';
 import { initQuickConvert, openQuickConvert, closeQuickConvert, qcAdd, qcIsOpen } from './features/quickconvert';
 import { initViewCube } from './features/viewcube';
 
@@ -66,7 +67,11 @@ function toast(msg: string, error = false) {
     b.onclick = () => showProblems();
     el.append(' ', b);
   }
+  // One message at a time: a new one replaces the last instead of stacking over the model (D06).
+  // The latest result also stays in the status line, so it can still be read after the toast fades.
+  $('#toasts').querySelectorAll('.toast:not(.error)').forEach((x) => x.remove());
   $('#toasts').appendChild(el);
+  if (!error) { const last = document.getElementById('statusLast'); if (last) last.textContent = t(msg); }
   setTimeout(() => el.remove(), error ? 9000 : 2600);
 }
 
@@ -199,13 +204,15 @@ const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
 // ------------------------------------------------------------------ static UI setup
 /** Set by the landing page (format viewer, converter or tool page) the visitor arrived on. */
-interface PageConfig { kind?: 'viewer' | 'convert' | 'tool' | 'guide'; from?: string; to?: ExportId; tool?: string }
+interface PageConfig { kind?: 'viewer' | 'convert' | 'tool' | 'guide'; from?: string; to?: ExportId; tool?: string; slug?: string }
 let PAGE: PageConfig = {};
 try { PAGE = JSON.parse($('#page-config')?.textContent || '{}'); } catch { /* defaults */ }
 $('#year').textContent = String(new Date().getFullYear());
 ($('#fileInput') as HTMLInputElement).accept = pickerAccept();
 // Format links stay in the visitor's language (OV-075); the page's <base> points at the site root.
-$('#formatList').innerHTML = FORMATS.map((f) => f.ext[0] === 'zip'
+// A named pair page (STL → GLB) lists only the format it takes, not all 44 (audit page review).
+const pageFormats = PAGE.kind === 'convert' && PAGE.from ? FORMATS.filter((f) => f.ext.includes(PAGE.from!)) : FORMATS;
+$('#formatList').innerHTML = (pageFormats.length ? pageFormats : FORMATS).map((f) => f.ext[0] === 'zip'
   ? `<span class="fmt" title="${esc(f.name)}">.zip</span>`
   : `<a class="fmt" href="${LANG_PREFIX}${f.ext[0]}-viewer/" title="${esc(f.name)} viewer">${f.ext.map((e) => '.' + e).join(' ')}</a>`).join('');
 $<HTMLAnchorElement>('.brand-home').href = LANG_PREFIX || './';
@@ -256,7 +263,10 @@ async function confirmDiscard(): Promise<boolean> {
 /** How a new file joins the scene when one is open (CA-16): replace it, add to it, or open in a new tab. */
 type OpenMode = 'replace' | 'add' | 'tab';
 
-async function openFiles(files: File[], urls: string[] | null = null, mode: OpenMode = 'replace', skipConfirm = false) {
+/** A unit decided before opening (in Quick Convert): it replaces the size-based guess, so nobody is asked twice (F01). */
+interface GivenUnit { unit: Unit; unitSource: UnitSource; up?: 'y' | 'z' }
+
+async function openFiles(files: File[], urls: string[] | null = null, mode: OpenMode = 'replace', skipConfirm = false, given?: GivenUnit) {
   if (!files.length) return;
   if (await maybeOpenProject(files)) return;
   if (mode === 'replace' && !skipConfirm && !(await confirmDiscard())) return;
@@ -271,9 +281,11 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
     const res = await loadFiles(files, (m) => owns() && setLoading(m), ac.signal, { baseUrl: urls?.[0], allowRemote: prefs.allowRemote });
     // A newer open started meanwhile: throw this result away instead of replacing newer work.
     if (!owns() || ac.signal.aborted) { disposeObject(res.object); return; }
+    if (openingProject) res.object = unwrapProjectRoot(res.object);
     if (mode === 'add' && viewer.model) { addToScene(res); return; }
     if (mode === 'tab' && viewer.model) stashCurrentDocument();
     setTool('none');
+    printRan.clear();
     measure.clear();
     editor.select(null);
     editor.setGizmo('none');
@@ -291,9 +303,9 @@ async function openFiles(files: File[], urls: string[] | null = null, mode: Open
     state.ext = ext;
     state.lastFiles = urls ? null : files;
     state.caps = detectCapabilities(res.object, ext, res.animations.length);
-    viewer.setUpAxis(defaultUp(ext));
+    viewer.setUpAxis(given?.up ?? defaultUp(ext));
     const size = viewer.bounds().getSize(new THREE.Vector3());
-    const guess = guessUnit(ext, Math.max(size.x, size.y, size.z), res.declaredUnit);
+    const guess: UnitGuess = given ? { unit: given.unit, source: given.unitSource } : guessUnit(ext, Math.max(size.x, size.y, size.z), res.declaredUnit);
     setFileUnit(guess.unit, guess.source, { undoable: false });
     hideUnitHint();
     if (guess.suggest) showUnitHint(guess.unit, guess.suggest.unit, guess.suggest.why);
@@ -525,8 +537,11 @@ function setDisplayUnit(u: Unit | 'auto') {
 
 // ------------------------------------------------------------------ tools
 let hintTimer = 0;
+/** Print checks the person has run on this model, for the print-ready checklist (N04). */
+const printRan = new Set<string>();
 function setTool(t: Tool) {
   if (state.tool === t) t = 'none';
+  if (t !== 'none') printRan.add(t);
   panels.get(state.tool)?.onDeactivate?.();
   state.tool = t;
   measure.setActive(t === 'measure');
@@ -694,6 +709,9 @@ function runAction(a: string) {
     case 'recipes': showRecipes(); break;
     case 'storagehelp': showHelpCentre('storage'); break;
     case 'sample': openSample(); break;
+    case 'printcheck': showPrintChecklist(); break;
+    case 'unitsample': openFiles([unitPracticeFile()]); break;
+    case 'comparesample': openCompareSample(); break;
     case 'convertfile': case 'modeconvert': openQuickConvert(); break;
     case 'closeqc': case 'modeview': closeQuickConvert(); break;
     case 'formats': showFormatsDialog(); break;
@@ -801,6 +819,20 @@ const headerObserver = new ResizeObserver(() => { cancelAnimationFrame(toolbarRa
 document.fonts?.ready.then(() => layoutToolbar());
 
 // ------------------------------------------------------------------ route-specific primary action (OV-044)
+const TOOL_DROP: Record<string, string> = {
+  scale: 'Open a model to resize it to an exact size',
+  units: 'Open a model to fix or change its units',
+  volume: 'Open a model to get its volume and surface area',
+  paint: 'Open a model to paint it',
+  edit: 'Open a model to edit it',
+  reduce: 'Open a model to reduce its polygons',
+  cut: 'Open a model to split or cut it',
+  outline: 'Open a model, cut a section and save the outline as DXF or SVG',
+  hollow: 'Open a model to hollow it',
+  thickness: 'Open a model to check its wall thickness',
+  boolean: 'Open the models to combine or subtract',
+  turntable: 'Open a model to make a 360° turntable',
+};
 function applyPagePrimary() {
   const zone = $('#dropZone');
   const title = $('#dzTitle'), btn = $('#dzBtn');
@@ -816,7 +848,19 @@ function applyPagePrimary() {
   else if (PAGE.tool === 'measure') set('Open a model to measure it');
   else if (PAGE.tool === 'repair') set('Open an STL to check and repair it', 'Open STL');
   else if (PAGE.tool === 'cost') set('Open a model to estimate print weight and cost');
+  // Every tool page names its own task instead of the home page's generic wording (audit, page review).
+  else if (PAGE.tool === 'convert') set('Drop files to convert', 'Choose files to convert');
+  else if (PAGE.tool && TOOL_DROP[PAGE.slug === 'stl-to-dxf' ? 'outline' : PAGE.tool]) set(TOOL_DROP[PAGE.slug === 'stl-to-dxf' ? 'outline' : PAGE.tool]);
   else title.textContent = t('Drop a model, folder or ZIP');
+  // The sample matches the page's task (D01, N03).
+  const sampleBtn = document.querySelector<HTMLElement>('.sample-try');
+  const sampleNote = document.querySelector<HTMLElement>('.sample-note');
+  if (sampleBtn && sampleNote) {
+    const setSample = (action: string, label: string, note: string) => { sampleBtn.dataset.action = action; sampleBtn.textContent = t(label); sampleNote.textContent = t(note); };
+    if (PAGE.tool === 'compare') setSample('comparesample', 'Try two sample revisions', 'The bracket and a revised version, ready to compare.');
+    else if (PAGE.tool === 'text') setSample('starttext', 'Try with sample text', 'Editable 3D letters you can resize and export.');
+    else if (PAGE.tool === 'units' || PAGE.tool === 'scale') setSample('unitsample', 'Try a box made in inches', 'A 20 × 10 × 5 box saved without units: fix its real size.');
+  }
   // Converter / viewer pages: the matching sample comes first.
   const ext = PAGE.from || '';
   const match = EXAMPLES.findIndex((e) => e.formats.includes(ext));
@@ -866,6 +910,26 @@ function buildBracket(): THREE.Group {
   }
   g.add(base, arm);
   return g;
+}
+/** A plain 20 × 10 × 5 box STL with no unit, as a file: the classic "made in inches, read as mm" case (N03). */
+function unitPracticeFile(): File {
+  const v = [[0, 0, 0], [20, 0, 0], [20, 10, 0], [0, 10, 0], [0, 0, 5], [20, 0, 5], [20, 10, 5], [0, 10, 5]];
+  const f = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+  const buf = new ArrayBuffer(84 + f.length * 50), dv = new DataView(buf);
+  dv.setUint32(80, f.length, true);
+  f.forEach((tri, i) => { const o = 84 + i * 50 + 12; tri.forEach((k, j) => v[k].forEach((c, a) => dv.setFloat32(o + j * 12 + a * 4, c, true))); });
+  return new File([buf], 'box-made-in-inches.stl', { type: 'model/stl' });
+}
+/** Compare landing: the sample bracket as A and a revised bracket (wider hole spacing, thicker arm) as B (D01). */
+async function openCompareSample() {
+  await openSample();
+  if (!viewer.model) return;
+  const b = buildBracket();
+  b.traverse((o) => { if (o.name === 'Support arm') o.scale.z = 1.4; if (o.name === 'Fastener M8') o.position.x += o.position.x < 60 ? -3 : 3; });
+  b.updateMatrixWorld(true);
+  const blob = await exportObject(b, 'glb', { unit: 'mm', up: 'y', scope: 'all' });
+  await compareWith([new File([blob], 'sample-bracket-rev-B.glb')]); // GLB is in metres; Compare converts it to A's mm
+  toast('Model A is the bracket, B is a revision with a thicker arm and moved bolts. Try the deviation view.');
 }
 async function openSample() {
   if (!(await confirmDiscard())) return;
@@ -1219,7 +1283,20 @@ history.onChange(() => { renderTabs?.(); updateStatus(); });
 let lastHistLen = 0;
 history.onChange(() => { const n = history.labels.length; if (n !== lastHistLen && measure.list.length && /Scale|Repair|Reduce|Hollow|Cut|Move|Rotate|Mirror|Rescale|Combine|Subtract|Intersect|transform|Lay flat|Drop|Centre/i.test(history.nextUndo || '')) measure.markStale(); lastHistLen = n; });
 editor.onChange(() => { updateToolbar(); renderDetailsSoon(); });
-measure.onChange(() => renderDetailsSoon());
+measure.onChange(() => { renderDetailsSoon(); measureStepHint(); });
+/** While measuring, the hint names the next step and stays put, so the canvas says what to do (D03, D05). */
+function measureStepHint() {
+  if (state.tool !== 'measure') return;
+  const tap = isTouch() ? 'Tap' : 'Click';
+  const n = measure.pendingCount;
+  const text = measure.mode === 'circle'
+    ? `${tap} point ${n + 1} of 3 around the hole · ${isTouch() ? 'Done' : 'Esc'} to stop`
+    : n ? `Now ${tap.toLowerCase()} the second point · ${isTouch() ? 'Done' : 'Esc'} to stop` : `${tap} the first point · snaps to corners · ${isTouch() ? 'Done' : 'Esc'} to stop`;
+  const hint = $('#toolHint');
+  hint.textContent = tr(text);
+  hint.classList.remove('hidden', 'fade');
+  clearTimeout(hintTimer);
+}
 let detailsRaf = 0;
 function renderDetailsSoon() { cancelAnimationFrame(detailsRaf); detailsRaf = requestAnimationFrame(renderDetails); }
 // live-update the numeric transform fields while dragging the gizmo
@@ -1545,6 +1622,7 @@ function toolSection(): string {
                  ${m.snapA || m.snapB ? `<div class="mi-sub">Snapped: ${m.snapA || 'surface'} → ${m.snapB || 'surface'}</div>` : ''}`}
             ${m.stale ? `<div class="mi-sub warn-note">Measured before the model was edited. <button class="link-btn" data-mrefresh="${m.id}">Still correct</button> or remove it.</div>` : ''}
           </div>
+          <button class="node-btn" style="opacity:1" data-mcopy="${m.id}" aria-label="${t('Copy')} ${esc(m.kind === 'circle' ? `⌀ ${fmtD(m.distance)}` : fmtD(m.distance))}" title="${t('Copy value with unit')}">${icon('copy')}</button>
           <button class="node-btn" style="opacity:1" data-mhide="${m.id}" aria-label="${m.hidden ? 'Show' : 'Hide'} ${esc(m.name)}">${icon(m.hidden ? 'eyeoff' : 'eye')}</button>
           <button class="node-btn" style="opacity:1" data-mremove="${m.id}" aria-label="Remove ${esc(m.name)}">${icon('x')}</button>
         </div>`).join('');
@@ -1704,7 +1782,46 @@ function healthSection(): string {
     item('Hidden parts', s.hiddenParts ? 'unknown' : 'pass', s.hiddenParts ? `${s.hiddenParts} hidden: left out of size, volume and exports` : 'All parts visible', s.hiddenParts ? '<button class="link-btn" data-badge="hidden">Show all</button>' : ''),
   ].filter(Boolean);
   return `<div class="section" id="sec-health"><div class="section-head"><span class="section-title">Model health</span></div><ul class="health">${items.join('')}</ul>
-    <p class="note">Mesh checks only. Wall thickness, overhangs and printer settings need their own checks.</p></div>`;
+    <p class="note">Mesh checks only. Wall thickness, overhangs and printer settings need their own checks. <button class="link-btn" data-action="printcheck">${t('Print-ready checklist')}</button></p></div>`;
+}
+
+/**
+ * Print-ready checklist (N04): strings the existing checks together in print order. Each line says what was checked;
+ * a check that hasn't been run says "Not checked". Nothing here claims a model is printable.
+ */
+function showPrintChecklist() {
+  const s = state.stats, c = state.caps;
+  if (!viewer.model || !s || !c) { toast('Open a model first (or select a part) to use this'); return; }
+  const unitsOk = state.unitSource === 'declared' || state.unitSource === 'user' || state.unitSource === 'saved';
+  const row = (n: number, label: string, st: 'pass' | 'fail' | 'unknown', note: string, action: string) =>
+    `<li class="hs-${st}"><span class="hs-dot" aria-hidden="true"></span><span><b>${n}. ${label}</b> <span class="hs-state">${({ pass: 'Done', fail: 'Needs attention', unknown: 'Not checked' })[st]}</span><br><small>${note}</small></span>${action}</li>`;
+  const ran = (id: string) => printRan.has(id);
+  const items = [
+    row(1, 'Real size', unitsOk ? 'pass' : 'unknown', `${fmtSize()} · ${UNITS[state.unit].label}, ${t(UNIT_SOURCE_LABEL[state.unitSource])}`, unitsOk ? '' : '<button class="btn-outline small" data-pc="unit">Confirm units</button>'),
+    c.volume ? row(2, 'Closed surface', s.closed === null ? 'unknown' : s.closed ? 'pass' : 'fail', s.closed === null ? 'Checking…' : s.closed ? 'Every edge is shared by two triangles' : 'Has holes or open edges: slicers may fill them unpredictably', s.closed === false ? '<button class="btn-outline small" data-pc="repair">Repair</button>' : '') : row(2, 'Closed surface', 'fail', 'No triangle mesh to print', ''),
+    c.volume ? row(3, 'Faces point outwards', s.invertedParts ? 'fail' : 'pass', s.invertedParts ? `${s.invertedParts} part(s) inside-out` : 'Faces point outwards', s.invertedParts ? '<button class="btn-outline small" data-pc="repair">Repair</button>' : '') : '',
+    row(4, 'Fits the printer bed', ran('bed') ? 'pass' : 'unknown', ran('bed') ? 'Checked against the printer chosen in the bed tool' : 'Pick your printer and see the model on its bed', `<button class="btn-outline small" data-pc="bed">${ran('bed') ? 'Check again' : 'Check bed fit'}</button>`),
+    row(5, 'Walls thick enough', ran('thickness') ? 'pass' : 'unknown', ran('thickness') ? 'Wall thickness map was run: review the thin areas it marked' : 'Thin walls may not print', `<button class="btn-outline small" data-pc="thickness">${ran('thickness') ? 'Check again' : 'Check walls'}</button>`),
+    row(6, 'Overhangs and orientation', ran('overhang') ? 'pass' : 'unknown', ran('overhang') ? 'Overhang map was run: supports go where it is red' : 'Steep overhangs need supports or another orientation', `<button class="btn-outline small" data-pc="overhang">${ran('overhang') ? 'Check again' : 'Show overhangs'}</button>`),
+  ].filter(Boolean);
+  openModal(`<h2>${t('Print-ready checklist')}</h2>
+    <p class="muted">Run the checks in order, then save a 3MF for your slicer (it records the unit, so the size arrives right). Only checks you have run count as done.</p>
+    <ul class="health">${items.join('')}</ul>
+    <div class="modal-actions"><button class="btn-solid" data-pc="export">Save 3MF for the slicer</button><button class="btn-outline" data-pc="stl">STL instead</button></div>
+    <p class="note">These are mesh and geometry checks. Your slicer's own preview is the final word on supports, bridges and print time.</p>`);
+  $('#modalCard').querySelectorAll<HTMLElement>('[data-pc]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.pc!;
+    modal.close();
+    if (k === 'unit') { openSheet('right'); syncBar(); setTimeout(() => ($('#fileUnit') as HTMLElement | null)?.focus(), 200); }
+    else if (k === 'export') showExportDialog('3mf');
+    else if (k === 'stl') showExportDialog('stl');
+    else setTool(k as Tool);
+  }));
+}
+/** Overall size in the display unit, for one-line summaries. */
+function fmtSize(): string {
+  const b = viewer.bounds().getSize(new THREE.Vector3());
+  return `${fmtD(b.x)} × ${fmtD(b.y)} × ${fmtD(b.z)}`;
 }
 
 function modelSection(): string {
@@ -1838,7 +1955,7 @@ function renderDetails() {
 const details = $('#rtab-details');
 details.addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
-  const el = t.closest<HTMLElement>('[data-sel],[data-msel],[data-ifcsame],[data-mremove],[data-mhide],[data-mrefresh],[data-mexport],[data-mclear],[data-mmode],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply],[data-unitforget],[data-unitremember],[data-animplay],[data-animreset],[data-ptcolor],[data-focus],[data-histundo],[data-reloadorig],[data-showcost]');
+  const el = t.closest<HTMLElement>('[data-sel],[data-msel],[data-ifcsame],[data-mremove],[data-mcopy],[data-mhide],[data-mrefresh],[data-mexport],[data-mclear],[data-mmode],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply],[data-unitforget],[data-unitremember],[data-animplay],[data-animreset],[data-ptcolor],[data-focus],[data-histundo],[data-reloadorig],[data-showcost]');
   if (!el) return;
   const d = el.dataset;
   const o = editor.selected;
@@ -1888,6 +2005,12 @@ details.addEventListener('click', (e) => {
     renderDetails();
   }
   if (d.mremove) measure.remove(Number(d.mremove));
+  if (d.mcopy) {
+    // Copies exactly what the row shows, in the display unit and precision (D05).
+    const m = measure.list.find((x) => x.id === Number(d.mcopy));
+    if (m) { const v = m.kind === 'circle' ? `⌀ ${fmtD(m.distance)}` : fmtD(m.distance); navigator.clipboard?.writeText(v).then(() => toast(`${tr('Copied')} ${v}`), () => toast(v)); }
+    return;
+  }
   if (d.mhide) { const m = measure.list.find((x) => x.id === Number(d.mhide)); if (m) measure.setHidden(m.id, !m.hidden); }
   if (d.mrefresh) measure.refresh(Number(d.mrefresh));
   if ('mexport' in d) download(new Blob([JSON.stringify({ model: state.modelName, unit: UNITS[dispUnit()].label, measurements: measure.toJSON((v) => fmtD(v)) }, null, 2)], { type: 'application/json' }), `${baseFileName()}-measurements.json`);
@@ -2079,6 +2202,7 @@ function renderSettings() {
     <div class="section">
       <div class="section-head"><span class="section-title">${t('Privacy')}</span></div>
       <label class="check"><input type="checkbox" data-pref="recents" ${prefs.rememberRecents ? 'checked' : ''}/> ${t('Remember recent files on this device')}</label>
+      <p class="note">${t('Keeps a copy of each opened file in this browser (up to 250 MB) so you can reopen it. Turning this off deletes the copies. Conversion history in Quick Convert stores names and formats only.')}</p>
       <label class="check"><input type="checkbox" data-pref="allowRemote" ${prefs.allowRemote ? 'checked' : ''}/> Let files from this device load textures from other websites</label>
       <p class="note">Off by default: a model file could otherwise make your browser contact a website it names. Models opened from a URL can always load files next to them.</p>
       <div class="btn-row"><button class="chip danger" data-clearlocal>${icon('trash')}Clear all local data</button><button class="chip" data-resetprefs>${icon('reset')}Reset preferences</button></div>
@@ -2243,7 +2367,8 @@ async function runExport(id: ExportId, part: THREE.Object3D | null = null, zUp =
     // Only a complete, lossless export counts as "saved". A lossy or partial one (STL drops colours and parts,
     // selected-only drops the rest) keeps the unsaved marker, so closing still offers to save a project (D01).
     const rep = describeExport(tgt.root ?? viewer.model!, id, { unit: state.unit as UnitId, up: viewer.upAxis, zUp, scope: tgt.scope, outUnit: choice.outUnit, perTriangleColors: choice.perTriangleColors });
-    const complete = !part && !tgt.tempGroup && rep.lost.length === 0 && rep.hiddenParts === 0 && measure.serialize().length === 0;
+    // Saved views and a chosen display unit live only in a project file, so an export doesn't "save" them (F32).
+    const complete = !part && !tgt.tempGroup && rep.lost.length === 0 && rep.hiddenParts === 0 && measure.serialize().length === 0 && savedViewsFor(state.identity).length === 0 && state.displayUnit === 'auto';
     state.lastExport = { label: f.label, at: Date.now(), complete };
     if (complete) history.markClean();
     updateStatus();
@@ -2690,6 +2815,7 @@ Object.assign(ctx, {
   activeTool: () => state.tool,
   selectObject,
   openFiles,
+  openFilesWith: (files: File[], given?: GivenUnit, mode: OpenMode = 'replace') => openFiles(files, null, mode, mode !== 'replace', given),
   modelName: () => state.modelName,
   modelId: () => state.identity || state.modelName,
   baseFileName,
@@ -2866,11 +2992,18 @@ async function saveProject() {
   try {
     const { zipSync, strToU8 } = await import('fflate');
     // Raw coordinates (no unit or axis change), every part, so reopening restores the exact scene.
-    const glb = await exportModel(viewer, 'glb', undefined, { unit: 'm', up: 'y', scope: 'all' });
+    // Every node gets a stable id that travels inside the GLB (glTF extras); hidden parts are saved by id, so
+    // two parts with the same name, or no name, keep their own visibility (F03). Version 2 manifest.
+    let n = 0;
+    const hiddenIds: number[] = [];
+    viewer.model.traverse((o) => { if (o.userData.helper) return; o.userData.ovId = n++; if (!o.visible) hiddenIds.push(o.userData.ovId); });
+    let glb: Blob;
+    try { glb = await exportModel(viewer, 'glb', undefined, { unit: 'm', up: 'y', scope: 'all', keepIds: true }); }
+    finally { viewer.model.traverse((o) => { delete o.userData.ovId; }); }
     const hidden: string[] = [];
-    viewer.model.traverse((o) => { if (!o.visible && !o.userData.helper) hidden.push(o.name); });
+    viewer.model.traverse((o) => { if (!o.visible && !o.userData.helper && o.name) hidden.push(o.name); });
     const manifest = {
-      format: 'omniviewer-project', version: 1, app: `${CONFIG.appName} ${APP_VERSION}`, saved: new Date().toISOString(),
+      format: 'omniviewer-project', version: 2, hiddenIds, app: `${CONFIG.appName} ${APP_VERSION}`, saved: new Date().toISOString(),
       name: state.modelName, ext: state.ext, unit: state.unit, unitSource: state.unitSource, up: viewer.upAxis, displayUnit: state.displayUnit,
       camera: cameraString(), hidden, measurements: measure.serialize(), views: savedViewsFor(state.identity), sourceUrls: state.sourceUrls,
     };
@@ -2882,6 +3015,22 @@ async function saveProject() {
   } catch (e: any) { toast(`Could not save the project: ${e?.message || e}`, true); }
   finally { setLoading(null); }
 }
+let openingProject = false;
+/** A project's GLB comes back inside the loader's scene and the exporter's wrapper. Returning the original model
+ *  root (marked at save time) keeps the hierarchy depth the same on every save/open cycle (F03). */
+function unwrapProjectRoot(obj: THREE.Object3D): THREE.Object3D {
+  let root: THREE.Object3D | null = null;
+  obj.traverse((o) => { if (!root && o.userData.ovRoot) root = o; });
+  const r = root as THREE.Object3D | null;
+  if (!r || r === obj) return obj;
+  obj.updateMatrixWorld(true);
+  const m = r.matrixWorld.clone();
+  r.removeFromParent();
+  m.decompose(r.position, r.quaternion, r.scale);
+  r.updateMatrixWorld(true);
+  return r;
+}
+
 async function maybeOpenProject(files: File[]): Promise<boolean> {
   const f = files.length === 1 && /\.omniproj$/i.test(files[0].name) ? files[0] : null;
   if (!f) return false;
@@ -2891,12 +3040,21 @@ async function maybeOpenProject(files: File[]): Promise<boolean> {
     const z = unzipSync(new Uint8Array(await f.arrayBuffer()));
     const m = JSON.parse(strFromU8(z['project.json']));
     if (m.format !== 'omniviewer-project') throw new Error('This is not an OMNIVIEWER project file.');
-    if (m.version > 1) throw new Error(`This project was saved by a newer version (format ${m.version}). Update the page and try again.`);
+    if (m.version > 2) throw new Error(`This project was saved by a newer version (format ${m.version}). Update the page and try again.`);
     const glb = new File([z['scene.glb'] as BlobPart], (m.name || 'scene').replace(/\.[^.]+$/, '') + '.glb');
-    await openFiles([glb], null, 'replace', true);
+    openingProject = true;
+    try { await openFiles([glb], null, 'replace', true); } finally { openingProject = false; }
     if (!viewer.model) return true;
-    const hidden = new Set<string>(m.hidden || []);
-    viewer.model.traverse((o) => { if (hidden.has(o.name)) o.visible = false; });
+    if (Array.isArray(m.hiddenIds)) {
+      // v2: by identity. Ids are dropped afterwards so they never reach an export.
+      const ids = new Set<number>(m.hiddenIds);
+      viewer.model.traverse((o) => { if (ids.has(o.userData.ovId)) o.visible = false; });
+    } else {
+      // v1: by name. Unnamed parts were saved as "" and must not hide every unnamed node.
+      const hidden = new Set<string>((m.hidden || []).filter(Boolean));
+      viewer.model.traverse((o) => { if (o.name && hidden.has(o.name)) o.visible = false; });
+    }
+    viewer.model.traverse((o) => { delete o.userData.ovId; delete o.userData.ovRoot; });
     state.modelName = m.name; state.ext = m.ext || state.ext;
     viewer.setUpAxis(m.up === 'z' ? 'z' : 'y');
     setFileUnit(m.unit, m.unitSource || 'user', { undoable: false });
@@ -3036,19 +3194,20 @@ function showUnitHint(current: Unit, suggest: Unit, why: string) {
   if (document.body.classList.contains('embed')) return; // visitors of an embed cannot change the owner's units
   const el = $('#unitHint');
   el.innerHTML = `<span>${esc(why)}</span>
-    <button class="chip" data-unithint="${suggest}">Use ${t(UNITS[suggest].label).toLowerCase()}</button>
-    <button class="chip" data-unithint="${current}">Keep ${UNITS[current].short}</button>
-    ${state.ext ? `<label class="check unit-remember"><input type="checkbox" id="unitRemember"/> Use for all .${esc(state.ext)} files</label>` : ''}`;
+    <button class="chip" data-unithint="${suggest}">${t('Use {unit}', { unit: t(UNITS[suggest].label).toLowerCase() })}</button>
+    <button class="chip" data-unithint="${current}">${t('Keep {u}', { u: UNITS[current].short })}</button>
+    ${state.ext ? `<label class="check unit-remember"><input type="checkbox" id="unitRemember"/> ${t('Use for all .{ext} files', { ext: esc(state.ext) })}</label>` : ''}`;
   el.classList.remove('hidden');
 }
-function hideUnitHint() { $('#unitHint').classList.add('hidden'); }
+let tipsWaiting = false;
+function hideUnitHint() { $('#unitHint').classList.add('hidden'); if (tipsWaiting && viewer.model) setTimeout(maybeShowTips, 400); }
 $('#unitHint').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-unithint]');
   if (!b) return;
   const remember = !!($('#unitRemember') as HTMLInputElement | null)?.checked;
   setFileUnit(b.dataset.unithint as Unit, remember ? 'saved' : 'user', { undoable: true, remember });
   hideUnitHint();
-  toast(`File units: ${t(UNITS[state.unit].label).toLowerCase()}${remember ? ` · saved for .${state.ext} files (shown in Details, where you can forget it)` : ''}`);
+  toast(`${t('File units: {u}', { u: t(UNITS[state.unit].label).toLowerCase() })}${remember ? ` · saved for .${state.ext} files (shown in Details, where you can forget it)` : ''}`);
 });
 
 // ------------------------------------------------------------------ recent files (OV-047, OV-048, OV-053)
@@ -3211,6 +3370,7 @@ function registerCoreCommands() {
     { id: 'bug', label: 'Report a problem', group: 'Help', keywords: 'bug issue diagnostics', run: () => showBugReport() },
     { id: 'about', label: 'About & support the project', group: 'Help', keywords: 'donate free', run: () => showSupportDialog() },
     { id: 'problems', label: 'Show problems and warnings', group: 'Help', keywords: 'errors log', run: () => showProblems() },
+    { id: 'printcheck', label: 'Print-ready checklist', group: 'Prepare', keywords: 'print ready 3d printing check slicer prepare printable', run: () => showPrintChecklist(), enabled: has },
     { id: 'saveproj', label: 'Save project (.omniproj)', group: 'File', shortcut: 'Ctrl+S', keywords: 'save session continue later', run: () => saveProject(), enabled: has },
     { id: 'addfile', label: 'Add files to this scene…', group: 'File', keywords: 'import merge combine', run: () => pickFiles('add'), enabled: has },
     { id: 'newtab', label: 'Open files in a new tab…', group: 'File', keywords: 'tab multiple documents compare', run: () => pickFiles('tab'), enabled: has },
@@ -3300,18 +3460,22 @@ function maybeShowToolTip(tool: string) {
 }
 function maybeShowTips() {
   if (store.get('tips', '') || document.body.classList.contains('embed') || $('.tips')) return;
+  // A decision comes first: while the unit question is open, the tips wait (F22).
+  if (!$('#unitHint').classList.contains('hidden')) { tipsWaiting = true; return; }
+  tipsWaiting = false;
   const touch = matchMedia('(pointer: coarse)').matches;
   const el = document.createElement('div');
   el.className = 'tips';
-  el.innerHTML = `<div class="tips-head"><b>Quick tips</b><button class="node-btn" style="opacity:1" aria-label="Close tips">${icon('x')}</button></div>
+  el.innerHTML = `<div class="tips-head"><b>${t('Quick tips')}</b><button class="node-btn" style="opacity:1" aria-label="${t('Close tips')}">${icon('x')}</button></div>
     <ol>
-      <li>${touch ? 'Drag with one finger to orbit, two fingers to pan and pinch to zoom.' : 'Drag to orbit, right-drag to pan, scroll to zoom. Double-click a part to zoom to it.'}</li>
-      <li>Click a part to select it. ${touch ? 'Long-press' : 'Right-click'} for actions like hide, isolate and export.</li>
-      <li>Press <kbd>Ctrl K</kbd> to search every tool: repair, reduce, cut, convert…</li>
+      <li>${t(touch ? 'Drag with one finger to orbit, two fingers to pan and pinch to zoom.' : 'Drag to orbit, right-drag to pan, scroll to zoom. Double-click a part to zoom to it.')}</li>
+      <li>${t('Click a part to select it.')} ${t(touch ? 'Long-press for actions like hide, isolate and export.' : 'Right-click for actions like hide, isolate and export.')}</li>
+      <li>${t('Press {k} to search every tool: repair, reduce, cut, convert…', { k: '<kbd>Ctrl K</kbd>' })}</li>
     </ol>
-    <button class="btn-outline small" data-tipsok>Got it</button>`;
+    <button class="btn-outline small" data-tipsok>${t('Got it')}</button>`;
   $('#stage').appendChild(el);
-  const close = () => { store.set('tips', '1'); el.remove(); };
+  document.body.classList.add('tips-open');
+  const close = () => { store.set('tips', '1'); el.remove(); document.body.classList.remove('tips-open'); };
   el.querySelector('[data-tipsok]')!.addEventListener('click', close);
   el.querySelector('.node-btn')!.addEventListener('click', close);
 }

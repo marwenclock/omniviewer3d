@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ctx, escHtml } from '../context';
 import { commands, type Command } from '../registry';
 import { icon } from '../icons';
+import { t } from '../i18n';
 
 // ------------------------------------------------------------------ command palette (Ctrl+K)
 let el: HTMLDivElement | null = null;
@@ -10,7 +11,9 @@ let active = 0;
 
 function score(c: Command, q: string): number {
   if (!q) return 1;
-  const hay = `${c.label} ${c.group} ${c.keywords || ''}`.toLowerCase();
+  // English and the page language both match, so "capture" finds Save screenshot on French pages (D08).
+  const hay = `${c.label} ${t(c.label)} ${c.group} ${t(c.group)} ${c.keywords || ''}`.toLowerCase();
+  const label = t(c.label).toLowerCase();
   const STOP = new Set(['to', 'a', 'an', 'the', 'as', 'into', 'in', 'my', 'file', 'model', 'for', 'of']);
   const words = q.toLowerCase().split(/\s+/).filter((w) => w && !STOP.has(w));
   if (!words.length) return 1;
@@ -18,7 +21,7 @@ function score(c: Command, q: string): number {
   for (const w of words) {
     const i = hay.indexOf(w);
     if (i < 0) return 0;
-    s += c.label.toLowerCase().startsWith(w) ? 5 : c.label.toLowerCase().includes(w) ? 3 : 1;
+    s += label.startsWith(w) || c.label.toLowerCase().startsWith(w) ? 5 : label.includes(w) || c.label.toLowerCase().includes(w) ? 3 : 1;
   }
   return s;
 }
@@ -35,18 +38,18 @@ function render(q: string) {
   const list = el.querySelector('.pal-list')!;
   let lastGroup = '';
   list.innerHTML = items.length ? items.map((c, i) => {
-    const head = !q && c.group !== lastGroup ? `<div class="pal-group">${escHtml(c.group)}</div>` : '';
+    const head = !q && c.group !== lastGroup ? `<div class="pal-group">${escHtml(t(c.group))}</div>` : '';
     lastGroup = c.group;
     const off = c.enabled && !c.enabled();
-    return `${head}<button class="pal-item ${i === active ? 'active' : ''} ${off ? 'off' : ''}" data-i="${i}"><span>${escHtml(c.label)}</span>${q ? `<span class="pal-g">${escHtml(c.group)}</span>` : ''}${c.shortcut ? `<kbd>${escHtml(c.shortcut)}</kbd>` : ''}</button>`;
-  }).join('') : '<div class="pal-empty">No matching command</div>';
+    return `${head}<button class="pal-item ${i === active ? 'active' : ''} ${off ? 'off' : ''}" data-i="${i}"><span>${escHtml(t(c.label))}</span>${q ? `<span class="pal-g">${escHtml(t(c.group))}</span>` : ''}${c.shortcut ? `<kbd>${escHtml(c.shortcut)}</kbd>` : ''}</button>`;
+  }).join('') : `<div class="pal-empty">${t('No matching command')}</div>`;
   list.querySelector('.pal-item.active')?.scrollIntoView({ block: 'nearest' });
 }
 
 function run(i: number) {
   const c = items[i];
   if (!c) return;
-  if (c.enabled && !c.enabled()) { ctx.toast('Open a model first (or select a part) to use this'); return; }
+  if (c.enabled && !c.enabled()) { ctx.toast(t('Open a model first (or select a part) to use this')); return; }
   closePalette();
   c.run();
 }
@@ -55,8 +58,8 @@ export function openPalette() {
   if (el) return;
   el = document.createElement('div');
   el.className = 'palette-wrap';
-  el.innerHTML = `<div class="palette-box" role="dialog" aria-label="Command palette">
-    <div class="pal-search">${icon('search')}<input type="text" placeholder="Search tools and actions… (e.g. to stl, repair, wireframe)" aria-label="Search commands"/><kbd>Esc</kbd></div>
+  el.innerHTML = `<div class="palette-box" role="dialog" aria-label="${t('Command palette')}">
+    <div class="pal-search">${icon('search')}<input type="text" placeholder="${t('Search tools and actions… (e.g. to stl, repair, wireframe)')}" aria-label="${t('Search commands')}"/><kbd>Esc</kbd></div>
     <div class="pal-list"></div></div>`;
   document.body.appendChild(el);
   const input = el.querySelector('input')!;

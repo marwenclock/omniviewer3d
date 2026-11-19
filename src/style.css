@@ -833,7 +833,10 @@ body.gl-lost .viewport { filter: grayscale(1) opacity(0.4); }
 .welcome h1 { font-size: clamp(30px, 4.2vw, 50px); margin-bottom: 12px; }
 .lede { margin-bottom: 20px; }
 .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); }
-.mode-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+/* labels wrap instead of overflowing at 320 px or in longer languages (F21) */
+.mode-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; min-width: 0; padding: 4px 10px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: normal; text-align: center; line-height: 1.2; }
+.mode-switch .icon { flex: none; }
+@media (max-width: 400px) { .mode-switch button { font-size: 13px; gap: 6px; padding: 4px 6px; } }
 .mode-switch button:hover { color: var(--hi); }
 .mode-switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .mode-switch .icon { width: 17px; height: 17px; }
@@ -1235,3 +1238,41 @@ body:not(.has-model) .viewcube { display: none; }
 .qc-units { justify-self: start; }
 body.qc-open .welcome h1 { font-size: clamp(28px, 4vw, 44px); margin-bottom: 10px; }
 body.qc-open .lede { margin-bottom: 16px; }
+
+/* Quick Convert, audit 2026-11-18: unit gate, honest bulk actions, phone order (row first, preview second). */
+.qc-gate { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--warn); border-radius: 12px; font-size: 13px; }
+.qc-gate b { color: var(--warn); }
+.qc-gate-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qc-gate-btns .btn-solid.small, .qc-gate-btns .btn-outline.small { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; }
+.qc-notice { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qc-saved { margin: 10px 0 0; font-size: 13px; color: var(--ok); display: flex; align-items: center; gap: 6px; }
+.qc-saved .icon { width: 15px; height: 15px; }
+.qc-out { font: 500 11px var(--mono); color: var(--ink-2) !important; }
+.qc-dims { color: var(--ink-2); }
+.qc-picker .qc-none { padding: 10px; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.qc-picker li[data-pid]:focus-visible { outline: 2px solid var(--focus, var(--ink)); outline-offset: -2px; background: var(--surface-2); }
+.qcp-kicker { font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.qcp-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.qcp-rotate { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 2; height: 34px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; background: var(--panel); }
+.qcp-rotate .icon { width: 15px; height: 15px; }
+.qc-preview.is-still .qcp-hint { visibility: hidden; }
+body.qc-open .qc-preview { margin: 14px 0 0; }
+/* once files are in, the drop zone becomes a compact "add more" bar so the row sits near the top (F10) */
+body.qc-has-rows .drop-zone { padding: 12px 16px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 4px 12px; }
+body.qc-has-rows .drop-zone .card-label, body.qc-has-rows .drop-zone .dz-sub, body.qc-has-rows .drop-zone .dz-paste { display: none; }
+body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
+@media (max-width: 760px) {
+  .qcp-stage { aspect-ratio: 16 / 9; }
+  body.qc-has-rows .welcome h1 { font-size: 24px; margin-bottom: 4px; }
+  body.qc-has-rows .lede { display: none; }
+  .qc-actions .btn-solid.small { flex: 1; justify-content: center; }
+}
+.status-last { margin-left: 14px; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 46ch; }
+@media (max-width: 760px) {
+  .status-last { display: none; }
+  /* while first-use tips sit at the bottom, messages move to the top so they never cover them (F22) */
+  body.tips-open .toasts { bottom: auto; top: calc(var(--top, 56px) + 12px); }
+}
+
+/* nothing in the welcome column may push the page wider than a 320 px phone (F21) */
+.welcome-main, .welcome-inner > * { min-width: 0; }

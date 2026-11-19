@@ -115,7 +115,7 @@ function fitBoth() {
   other.userData.helper = true;
 }
 
-async function openOther(files: File[]) {
+async function openOther(files: File[], knownUnit?: Unit) {
   ctx.setLoading('Loading comparison model…');
   try {
     const res = await loadFiles(files, (m) => ctx.setLoading(m));
@@ -125,7 +125,8 @@ async function openOther(files: File[]) {
     // Bring B into A's physical units and axes (OV-099).
     const ext = extOf(res.mainFiles[0]);
     const size = new THREE.Box3().setFromObject(other).getSize(new THREE.Vector3());
-    const g = guessUnit(ext, Math.max(size.x, size.y, size.z), res.declaredUnit);
+    // A unit the person already chose (in Quick Convert) wins over the size-based guess (F33).
+    const g: { unit: Unit; source: string } = knownUnit ? { unit: knownUnit, source: 'set by you' } : guessUnit(ext, Math.max(size.x, size.y, size.z), res.declaredUnit);
     otherUnit = g.unit;
     const aUnit = ctx.unit();
     if (aUnit !== 'u' && g.unit !== 'u') other.scale.multiplyScalar(UNITS[g.unit].toMeters / UNITS[aUnit].toMeters);
@@ -259,7 +260,7 @@ registerPanel({
 });
 
 /** Opens the compare tool against the given files (used by Quick Convert's "Compare" for two rows). */
-export async function compareWith(files: File[]) { ctx.setTool('compare'); await openOther(files); }
+export async function compareWith(files: File[], knownUnit?: Unit) { ctx.setTool('compare'); await openOther(files, knownUnit); }
 
 export function initCompare() {
   registerCommand({ id: 'compare', label: 'Compare with another model…', group: 'Inspect', keywords: 'diff revision version overlay wipe deviation', run: () => ctx.setTool('compare'), enabled: () => !!ctx.viewer.model });

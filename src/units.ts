@@ -1,4 +1,5 @@
 import type { Unit } from './stats';
+import { t } from './i18n';
 
 // Unit and up-axis defaults per file type. A default saved for a format is always shown to the user (CA-07).
 
@@ -46,13 +47,13 @@ export function guessUnit(ext: string, maxSize: number, declared?: Unit): UnitGu
   const remembered = rememberedPref(ext).unit;
   if (remembered) return { unit: remembered, source: 'saved' };
   if (MM.has(ext)) {
-    if (maxSize > 0 && maxSize < 0.5) return { unit: 'm', source: 'guess', suggest: { unit: 'mm', why: `It is only ${maxSize.toPrecision(2)} units across, so it was probably made in metres.` } };
-    if (maxSize >= 0.5 && maxSize < 25) return { unit: 'mm', source: 'guess', suggest: { unit: 'in', why: `At ${maxSize.toPrecision(3)} mm across it is very small. It may have been made in inches.` } };
-    if (maxSize > 5000) return { unit: 'mm', source: 'guess', suggest: { unit: 'm', why: 'It is over 5 metres across in millimetres. It may be in centimetres or metres.' } };
+    if (maxSize > 0 && maxSize < 0.5) return { unit: 'm', source: 'guess', suggest: { unit: 'mm', why: t('It is only {n} units across, so it was probably made in metres.', { n: maxSize.toPrecision(2) }) } };
+    if (maxSize >= 0.5 && maxSize < 25) return { unit: 'mm', source: 'guess', suggest: { unit: 'in', why: t('At {n} mm across it is very small. It may have been made in inches.', { n: maxSize.toPrecision(3) }) } };
+    if (maxSize > 5000) return { unit: 'mm', source: 'guess', suggest: { unit: 'm', why: t('It is over 5 metres across in millimetres. It may be in centimetres or metres.') } };
     return { unit: 'mm', source: 'format' };
   }
   if (METRES.has(ext)) {
-    if (maxSize > 200) return { unit: 'm', source: 'guess', suggest: { unit: 'cm', why: `At ${Math.round(maxSize)} m across it is huge. It may be in centimetres or millimetres.` } };
+    if (maxSize > 200) return { unit: 'm', source: 'guess', suggest: { unit: 'cm', why: t('At {n} m across it is huge. It may be in centimetres or millimetres.', { n: Math.round(maxSize) }) } };
     return { unit: 'm', source: 'format' };
   }
   return { unit: 'mm', source: 'format' };
