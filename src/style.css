@@ -1301,3 +1301,23 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
   .qc-row.has-pick .qc-pick { top: 22px; transform: none; }
   .qc-actions .btn-solid.small { flex: 1; justify-content: center; }
 }
+/* source meta on one line: format · file size · dimensions (no triangle count) */
+.qc-meta { font-size: 12px; color: var(--muted); }
+.qc-meta .qc-dims { font: inherit; color: var(--ink); font-weight: 500; white-space: nowrap; }
+/* Phones keep the converter's left-to-right reading: source | → | output, side by side; the action spans below. */
+@media (max-width: 760px) {
+  .qc-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px 8px; align-items: start; }
+  .qc-row .qc-src { grid-column: 1; flex-direction: column; gap: 8px; }
+  .qc-row .qc-arrow { grid-column: 2; padding: 0; align-self: center; }
+  .qc-row .qc-dst { grid-column: 3; align-self: center; }
+  .qc-row .qc-actions { grid-column: 1 / -1; }
+  .qc-row .qc-thumb { width: 44px; height: 44px; }
+  .qc-row .qc-units { flex-wrap: wrap; row-gap: 2px; }
+  .qc-dst-pick .qc-target { padding: 0 8px; font-size: 12.5px; }
+  .qc-row.has-pick .qc-pick { top: 14px; }
+}
+.qc-meta .qc-dims::before { content: ' · '; color: var(--muted); font-weight: 400; }
+@media (max-width: 760px) {
+  .qc-meta .qc-dims { display: block; }
+  .qc-meta .qc-dims::before { content: none; }
+}

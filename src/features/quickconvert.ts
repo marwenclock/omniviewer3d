@@ -472,8 +472,7 @@ function rowHtml(r: Row) {
       <button class="qc-thumb" type="button" data-preview="${r.id}" aria-label="${t('Preview')} ${escHtml(r.name)}" aria-pressed="${r.id === previewId}">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</button>
       <div class="qc-info">
         <b title="${escHtml(r.name)}">${escHtml(r.name)}</b>
-        <small>${escHtml(r.ext.toUpperCase())} · ${fmtBytes(r.size)}${r.tris ? ` · ${r.tris.toLocaleString()} ${t('triangles')}` : ''}</small>
-        ${r.dims ? `<span class="qc-dims">${dimsText(r)}</span>` : ''}
+        <small class="qc-meta"><span>${escHtml(r.ext.toUpperCase())} · ${fmtBytes(r.size)}</span>${r.dims ? `<span class="qc-dims">${dimsText(r)}</span>` : ''}</small>
         ${unitSel}
         ${srcState}
         ${r.help && r.status !== 'done' ? `<small class="qc-help ${needsUnitConfirm(r) ? 'warn-note' : ''}">${escHtml(r.help)}</small>` : ''}
@@ -582,7 +581,7 @@ function updatePreview() {
   const r = rows.find((x) => x.id === previewId) ?? rows.find((x) => x.obj);
   if (!r) { showPreview({ kind: 'empty' }); return; }
   previewId = r.id;
-  if (r.obj) showPreview({ kind: 'ready', name: r.name, obj: r.obj, up: r.up, key: r.id, caption: [dimsText(r), r.tris ? `${r.tris.toLocaleString()} ${t('triangles')}` : ''].filter(Boolean).join(' · '), still: () => still(r) });
+  if (r.obj) showPreview({ kind: 'ready', name: r.name, obj: r.obj, up: r.up, key: r.id, caption: dimsText(r), still: () => still(r) });
   else if (r.status === 'failed') showPreview({ kind: 'failed', name: r.name, error: r.error || t('This file could not be read.') });
   else showPreview({ kind: 'loading', name: r.name });
 }
