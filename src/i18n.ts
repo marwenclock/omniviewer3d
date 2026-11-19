@@ -450,6 +450,8 @@ const ROWS: [string, string, string, string, string][] = [
   ['Editable 3D letters you can resize and export.', 'Letras 3D editables que puedes redimensionar y exportar.', 'Bearbeitbare 3D-Buchstaben zum Skalieren und Exportieren.', 'Des lettres 3D modifiables à redimensionner et exporter.', 'Letras 3D editáveis para redimensionar e exportar.'],
   ['Try a box made in inches', 'Probar una caja hecha en pulgadas', 'Box in Zoll ausprobieren', 'Essayer une boîte faite en pouces', 'Testar uma caixa feita em polegadas'],
   ['A 20 × 10 × 5 box saved without units: fix its real size.', 'Una caja de 20 × 10 × 5 guardada sin unidades: corrige su tamaño real.', 'Eine 20 × 10 × 5 Box ohne Einheiten: korrigieren Sie die echte Größe.', 'Une boîte 20 × 10 × 5 enregistrée sans unité : corrigez sa taille réelle.', 'Uma caixa 20 × 10 × 5 salva sem unidades: corrija o tamanho real.'],
+  ['Output size', 'Tamaño de salida', 'Ausgabegröße', 'Taille en sortie', 'Tamanho de saída'],
+  ['Not kept', 'No se conserva', 'Nicht übernommen', 'Non conservé', 'Não mantido'],
 ];
 
 const DICT: Record<Exclude<Lang, 'en'>, Map<string, string>> = { es: new Map(), de: new Map(), fr: new Map(), pt: new Map() };

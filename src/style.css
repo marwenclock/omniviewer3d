@@ -1276,3 +1276,28 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
 
 /* nothing in the welcome column may push the page wider than a 320 px phone (F21) */
 .welcome-main, .welcome-inner > * { min-width: 0; }
+
+/* Converter row, read left to right: source → output → action (owner feedback 2026-11-19). The source size is shown
+   once; the output side shows only what changes: format, file size, losses, and a new size when scaled. */
+.qc-row { position: relative; grid-template-columns: minmax(0, 1.25fr) auto minmax(0, 1fr) auto; gap: 10px 16px; align-items: center; padding: 12px 40px 12px 12px; }
+.qc-row.has-pick { padding-left: 36px; }
+.qc-pick { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); }
+.qc-x { position: absolute; top: 8px; right: 8px; }
+.qc-src { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.qc-info { gap: 4px; }
+.qc-dims { font: 500 13px var(--font); color: var(--ink); font-variant-numeric: tabular-nums; }
+.qc-arrow { font-size: 18px; color: var(--muted); }
+.qc-dst { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
+.qc-dst-pick { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; }
+.qc-dst-pick .qc-target { max-width: 100%; }
+.qc-lost, .qc-resized { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.qc-resized { color: var(--ink-2); }
+.qc-actions { justify-content: flex-end; }
+@media (max-width: 760px) {
+  .qc-row { grid-template-columns: auto minmax(0, 1fr); padding: 12px 36px 12px 12px; }
+  .qc-src, .qc-actions { grid-column: 1 / -1; }
+  .qc-row .qc-arrow { grid-column: 1; align-self: start; padding-top: 6px; padding-left: 4px; }
+  .qc-row .qc-dst { grid-column: 2; }
+  .qc-row.has-pick .qc-pick { top: 22px; transform: none; }
+  .qc-actions .btn-solid.small { flex: 1; justify-content: center; }
+}

@@ -3,7 +3,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { ctx, escHtml } from '../context';
 import { registerCommand } from '../registry';
 import { loadFiles, MODEL_EXTS, extOf, pathOf } from '../loaders';
-import { EXPORT_FORMATS, exportObject, describeExport, exportBlocker, staysYUp, formatById, download, safeFileName, outputUnit, type ExportId, type UnitId } from '../exporters';
+import { EXPORT_FORMATS, exportObject, describeExport, exportBlocker, staysYUp, formatById, download, safeFileName, outputUnit, UNIT_METRES, type ExportId, type UnitId } from '../exporters';
 import { ProprietaryFormatError, PROPRIETARY } from '../formats-extra';
 import { guessUnit, defaultUp } from '../units';
 import { disposeObject } from '../viewer';
@@ -423,6 +423,18 @@ function actionLabel(r: Row): string {
   return instant ? t('Download') : t('Convert');
 }
 
+/** Real size of the output, only when it differs from the source (scale option): the source size is shown once. */
+function resizedText(r: Row, rep: { size: THREE.Vector3; sizeUnit: UnitId | null } | null): string {
+  if (!rep?.sizeUnit || !r.dims || r.unit === 'u' || rep.sizeUnit === 'u' || rep.size.lengthSq() === 0) return '';
+  const k = UNIT_METRES[rep.sizeUnit] / UNIT_METRES[r.unit]; // output numbers → source unit
+  const out = [rep.size.x, rep.size.y, rep.size.z].map((v) => v * k).sort((a, b) => a - b);
+  const src = [r.dims.x, r.dims.y, r.dims.z].sort((a, b) => a - b);
+  if (out.every((v, i) => Math.abs(v - src[i]) <= Math.max(1e-6, src[i] * 0.005))) return '';
+  const [x, y, z] = [rep.size.x, rep.size.y, rep.size.z].map((v) => v * k);
+  return `${num(x)} × ${num(y)} × ${num(z)} ${UNIT_LABEL[r.unit]}`;
+}
+
+/** One file, read left to right like any converter: what you have → what you get, then the action (F10). */
 function rowHtml(r: Row) {
   const f = formatById(r.target);
   const est = r.status === 'ready' ? estimate(r, r.target) : null;
@@ -430,13 +442,16 @@ function rowHtml(r: Row) {
   const rep = r.obj && r.status !== 'loading' && !blocked ? describeExport(r.obj, r.target, exportOpts(r, opts, r.obj)) : null;
   const unitSel = r.status !== 'loading' && r.obj
     ? `<label class="qc-units ${needsUnitConfirm(r) ? 'warn' : ''}"><select data-unit="${r.id}" aria-label="${t('Units of the original file')}">${UNITS.map((u) => `<option value="${u}" ${r.unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select><span>${escHtml(srcLabel(r))}</span></label>` : '';
-  const sizeInFile = rep?.sizeUnit && rep.size.lengthSq() > 0 ? `<small class="qc-out">${t('Size in file')}: ${num(rep.size.x)} × ${num(rep.size.y)} × ${num(rep.size.z)} ${UNIT_LABEL[rep.sizeUnit]}</small>` : '';
-  const status = r.status === 'loading' ? `<span class="qc-status">${t('Reading…')}</span>`
-    : r.status === 'converting' ? `<span class="qc-status">${t('Converting…')}</span>`
+  const resized = r.status !== 'failed' ? resizedText(r, rep) : '';
+  // Source side: the file as it is.
+  const srcState = r.status === 'loading' ? `<span class="qc-status">${t('Reading…')}</span>`
+    : r.status === 'failed' && !r.obj ? `<span class="qc-status bad">${escHtml(r.error || 'Failed')}</span>` : '';
+  // Output side: the file you will get.
+  const dstState = r.status === 'converting' ? `<span class="qc-status">${t('Converting…')}</span>`
     : r.status === 'failed' ? `<span class="qc-status bad">${escHtml(r.error || 'Failed')}</span>`
     : r.status === 'done' ? `<span class="qc-status ok">${icon('check')}${escHtml(r.result!.name)} · ${fmtBytes(r.result!.blob.size)}</span>`
     : blocked ? `<span class="qc-status bad">${t("Can't save as {f}", { f: f.label })}: ${escHtml(blocked)}</span>`
-    : `<span class="qc-status">${est ? `≈ ${fmtBytes(est)}` : ''}${rep?.lost.length ? ` · ${t('loses')} ${escHtml(rep.lost.join(', '))}` : ''}</span>`;
+    : est ? `<span class="qc-status">≈ ${fmtBytes(est)}</span>` : '';
   const extChoice = exts(r.target).length > 1 ? `<select class="qc-ext" data-ext="${r.id}" aria-label="${t('File extension')}">${exts(r.target).map((e) => `<option ${(r.ext2 || f.ext) === e ? 'selected' : ''}>${e}</option>`).join('')}</select>` : '';
   const canConvert = r.obj && !blocked && r.status !== 'converting';
   let actions: string;
@@ -451,25 +466,28 @@ function rowHtml(r: Row) {
   } else {
     actions = `<button class="btn-solid small" data-convert="${r.id}" ${canConvert ? '' : 'disabled'}>${escHtml(actionLabel(r))}</button>`;
   }
-  return `<li class="qc-row is-${r.status}${rows.length > 1 && r.id === previewId ? ' is-previewed' : ''}" data-row="${r.id}">
-    ${rows.length > 1 ? `<label class="qc-pick" title="${t('Select for Compare')}"><input type="checkbox" data-pickrow="${r.id}" ${r.picked ? 'checked' : ''} ${r.obj ? '' : 'disabled'} aria-label="${t('Select for Compare')}: ${escHtml(r.name)}"/></label>` : '<span></span>'}
-    <button class="qc-thumb" type="button" data-preview="${r.id}" aria-label="${t('Preview')} ${escHtml(r.name)}" aria-pressed="${r.id === previewId}">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</button>
-    <div class="qc-info">
-      <b title="${escHtml(r.name)}">${escHtml(r.name)}</b>
-      <small>${escHtml(r.ext.toUpperCase())} · ${fmtBytes(r.size)}${r.tris ? ` · ${r.tris.toLocaleString()} ${t('triangles')}` : ''}${r.dims ? ` · <span class="qc-dims">${dimsText(r)}</span>` : ''}</small>
-      ${unitSel}
-      ${status}
-      ${r.status !== 'failed' ? sizeInFile : ''}
-      ${r.help && r.status !== 'done' ? `<small class="qc-help ${needsUnitConfirm(r) ? 'warn-note' : ''}">${escHtml(r.help)}</small>` : ''}
+  return `<li class="qc-row is-${r.status}${rows.length > 1 && r.id === previewId ? ' is-previewed' : ''}${rows.length > 1 ? ' has-pick' : ''}" data-row="${r.id}">
+    ${rows.length > 1 ? `<label class="qc-pick" title="${t('Select for Compare')}"><input type="checkbox" data-pickrow="${r.id}" ${r.picked ? 'checked' : ''} ${r.obj ? '' : 'disabled'} aria-label="${t('Select for Compare')}: ${escHtml(r.name)}"/></label>` : ''}
+    <div class="qc-src">
+      <button class="qc-thumb" type="button" data-preview="${r.id}" aria-label="${t('Preview')} ${escHtml(r.name)}" aria-pressed="${r.id === previewId}">${r.thumb ? `<img src="${r.thumb}" alt=""/>` : `<span>${escHtml(r.ext.toUpperCase().slice(0, 5))}</span>`}</button>
+      <div class="qc-info">
+        <b title="${escHtml(r.name)}">${escHtml(r.name)}</b>
+        <small>${escHtml(r.ext.toUpperCase())} · ${fmtBytes(r.size)}${r.tris ? ` · ${r.tris.toLocaleString()} ${t('triangles')}` : ''}</small>
+        ${r.dims ? `<span class="qc-dims">${dimsText(r)}</span>` : ''}
+        ${unitSel}
+        ${srcState}
+        ${r.help && r.status !== 'done' ? `<small class="qc-help ${needsUnitConfirm(r) ? 'warn-note' : ''}">${escHtml(r.help)}</small>` : ''}
+      </div>
     </div>
-    <div class="qc-to">
-      ${r.obj ? `<span class="qc-arrow" aria-hidden="true">→</span>
-      <button class="qc-target" data-target="${r.id}" aria-haspopup="listbox" aria-label="${t('Output format')}: ${escHtml(f.label)}">${escHtml(f.label)}<i>${icon('chev')}</i></button>${extChoice}` : ''}
-    </div>
-    <div class="qc-actions">
-      ${actions}
-      <button class="qc-x" data-remove="${r.id}" aria-label="${t('Remove')} ${escHtml(r.name)}">${icon('x')}</button>
-    </div>
+    ${r.obj ? `<span class="qc-arrow" aria-hidden="true">→</span>
+    <div class="qc-dst">
+      <div class="qc-dst-pick"><button class="qc-target" data-target="${r.id}" aria-haspopup="listbox" aria-label="${t('Output format')}: ${escHtml(f.label)}">${escHtml(f.label)}<i>${icon('chev')}</i></button>${extChoice}</div>
+      ${dstState}
+      ${resized ? `<small class="qc-resized">${t('Output size')}: ${resized}</small>` : ''}
+      ${rep?.lost.length && r.status !== 'failed' ? `<small class="qc-lost">${t('Not kept')}: ${escHtml(rep.lost.join(', '))}</small>` : ''}
+    </div>` : ''}
+    <div class="qc-actions">${actions}</div>
+    <button class="qc-x" data-remove="${r.id}" aria-label="${t('Remove')} ${escHtml(r.name)}">${icon('x')}</button>
   </li>`;
 }
 
