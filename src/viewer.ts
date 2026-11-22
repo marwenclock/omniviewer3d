@@ -40,7 +40,21 @@ export class Viewer {
   private sectionHelper: THREE.Mesh | null = null;
   private explodeFactor = 0;
   private timer = new THREE.Timer();
-  envTexture: THREE.Texture;
+  /** Image-based lighting, built on first use (Core Web Vitals: an empty landing scene never pays for it). */
+  private _env: THREE.Texture | null = null;
+  private lighting: 'studio' | 'soft' | 'flat' = 'studio';
+  get envTexture(): THREE.Texture {
+    if (!this._env) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this._env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    }
+    return this._env;
+  }
+  /** Turns the environment lighting on once there is something in the scene for it to light. */
+  private ensureEnvironment() {
+    if (!this.scene.environment && this.lighting !== 'flat' && this.world.children.length) this.scene.environment = this.envTexture;
+  }
   headlight: THREE.DirectionalLight;
   ambient: THREE.HemisphereLight;
   private listeners = new Set<() => void>();
@@ -82,9 +96,7 @@ export class Viewer {
     this.labels.domElement.className = 'labels-layer';
     container.appendChild(this.labels.domElement);
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environment = this.envTexture;
+    // Environment lighting is built lazily (see envTexture / ensureEnvironment): it is the most expensive start-up step.
     this.scene.environmentIntensity = 0.9;
 
     this.ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
@@ -118,7 +130,7 @@ export class Viewer {
     this.renderer.domElement.addEventListener('webglcontextrestored', () => { this.contextLost = false; this.refreshMaterials(); this.requestRender(2000); this.onContextChange(false); });
 
     new ResizeObserver(() => this.resize()).observe(container);
-    this.resize();
+    this.resize(false); // first frame comes from the animation loop, not inside the start-up task (TBT)
     this.setBackground(this.background);
     this.updateGrid(new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1)));
     this.renderer.setAnimationLoop(() => this.frame());
@@ -165,7 +177,7 @@ export class Viewer {
   navPreset: 'default' | 'cad' | 'blender' = 'default';
   onFrame(fn: (dt: number) => void) { this.frameHooks.add(fn); return () => this.frameHooks.delete(fn); }
 
-  private resize() {
+  private resize(drawNow = true) {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h);
@@ -175,11 +187,12 @@ export class Viewer {
     this.updateOrtho();
     this.requestRender?.();
     // Resizing clears the canvas; draw straight away instead of waiting for a (possibly throttled) animation frame.
-    if (this.scene && this.camera && !this.contextLost && !this.hold && !this.recording) this.draw();
+    if (drawNow && this.scene && this.camera && !this.contextLost && !this.hold && !this.recording) this.draw();
   }
 
   /** One frame of the scene, gizmo and labels. */
   private draw() {
+    this.ensureEnvironment();
     this.renderer.clear();
     if (this.split && this.split.left.length + this.split.right.length) this.renderSplit();
     else this.renderer.render(this.scene, this.camera);
@@ -478,7 +491,7 @@ export class Viewer {
     };
   }
   /** Renders one frame now (scene only, no corner gizmo). */
-  renderOnce() { this.renderer.clear(); this.renderer.render(this.scene, this.camera); }
+  renderOnce() { this.ensureEnvironment(); this.renderer.clear(); this.renderer.render(this.scene, this.camera); }
 
   // ---------------------------------------------------------------- environment
 
@@ -494,7 +507,8 @@ export class Viewer {
   }
 
   setLighting(preset: 'studio' | 'soft' | 'flat') {
-    this.scene.environment = preset === 'flat' ? null : this.envTexture;
+    this.lighting = preset;
+    this.scene.environment = preset === 'flat' || !this.world.children.length ? null : this.envTexture;
     this.scene.environmentIntensity = preset === 'soft' ? 0.5 : 0.9;
     this.headlight.intensity = preset === 'flat' ? 2.2 : preset === 'soft' ? 0.8 : 1.2;
     this.ambient.intensity = preset === 'flat' ? 1.4 : 0.6;
@@ -668,6 +682,7 @@ export class Viewer {
     }
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(outW, outH, false);
+    this.ensureEnvironment();
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
     const out = document.createElement('canvas');

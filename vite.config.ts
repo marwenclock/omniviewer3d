@@ -54,6 +54,8 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 4000,
+    // Public source maps: the project is open source, and they make errors readable in browser tools (Lighthouse).
+    sourcemap: true,
   },
   optimizeDeps: {
     exclude: ['web-ifc'],

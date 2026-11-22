@@ -184,7 +184,12 @@ const state = {
   bgCustom: store.get('bg', '') || null,
 };
 
+// Start-up runs in a few separate tasks instead of one long one (Core Web Vitals: Total Blocking Time, INP).
+// Only yield where no app callbacks are registered yet: later top-level declarations must not be reachable early.
+const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
+await yieldToMain(); // after three.js and the other modules have been evaluated
 const viewer = new Viewer($('#viewport'));
+await yieldToMain(); // after the WebGL context is created
 setSharedRenderer(viewer.renderer);
 const history = new History();
 const editor = new Editor(viewer, history);

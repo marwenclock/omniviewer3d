@@ -1,0 +1,9 @@
+# Response headers for Cloudflare Workers static assets (copied into dist/ by Vite).
+# No X-Frame-Options / frame-ancestors: other sites may embed the viewer in an iframe (Share → embed code).
+# HSTS is set in the Cloudflare dashboard (SSL/TLS → Edge Certificates), not here.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: object-src 'none'; base-uri 'self'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
