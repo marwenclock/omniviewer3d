@@ -7,7 +7,10 @@ import { applyStaticI18n, t } from './i18n';
 function hasWebGL(): boolean {
   try {
     const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+    const gl = (c.getContext('webgl2') || c.getContext('webgl')) as WebGLRenderingContext | null;
+    // Release the probe context at once so it doesn't hold GPU memory next to the viewer's own context (phones).
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return !!gl;
   } catch { return false; }
 }
 

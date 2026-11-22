@@ -29,11 +29,28 @@ function seoPages(): Plugin {
   };
 }
 
+/** Preloads the Geist text font so it arrives with the CSS rather than after it (Core Web Vitals: less font swap).
+ *  Build only: the hashed file name is known once the bundle exists. Landing pages copy this head from dist/index.html. */
+function preloadFont(): Plugin {
+  return {
+    name: 'omniviewer-preload-font',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (_html, ctx) => {
+        const file = Object.keys(ctx.bundle || {}).find((f) => /(^|\/)Geist-Variable-[\w-]+\.woff2$/.test(f));
+        if (!file) return [];
+        return [{ tag: 'link', attrs: { rel: 'preload', href: './' + file, as: 'font', type: 'font/woff2', crossorigin: '' }, injectTo: 'head-prepend' }];
+      },
+    },
+  };
+}
+
 export default defineConfig({
   // Relative base so the build works on GitHub Pages sub-paths and custom domains alike.
   base: './',
   define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
-  plugins: [seoPages()],
+  plugins: [seoPages(), preloadFont()],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 4000,

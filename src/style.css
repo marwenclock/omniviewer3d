@@ -1,6 +1,10 @@
 /* Self-hosted Geist (SIL OFL, see src/fonts/OFL.txt): no third-party font request (OV-092). */
 @font-face { font-family: 'Geist'; src: url('./fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Geist Mono'; src: url('./fonts/GeistMono-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+/* Metric-matched fallbacks (Core Web Vitals, CLS): while Geist loads, text is drawn in a local font scaled to Geist's
+   width and line height, so swapping to Geist moves nothing. Values measured from Geist-Regular vs Arial (hhea metrics). */
+@font-face { font-family: 'Geist Fallback'; src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Arimo'), local('Helvetica'); size-adjust: 101.1%; ascent-override: 99.41%; descent-override: 29.18%; line-gap-override: 0%; }
+@font-face { font-family: 'Geist Fallback Roboto'; src: local('Roboto'), local('Roboto-Regular'); size-adjust: 102%; ascent-override: 98.5%; descent-override: 28.9%; line-gap-override: 0%; }
 /* OMNIVIEW: design language follows bankasimedia.com
    (near-black monochrome, Geist, wide-tracked uppercase labels, hairline borders, glassy rounded cards) */
 :root {
@@ -25,7 +29,7 @@
   --ok: #7ad69a;
   --radius: 8px;
   --radius-lg: 14px;
-  --font: 'Geist', 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Geist', 'Geist Fallback', 'Geist Fallback Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
   --top: 56px;
   --status: 28px;
