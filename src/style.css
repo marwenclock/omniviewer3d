@@ -1388,3 +1388,32 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
   /* header buttons as round icon buttons */
   .top-right .tb { border-radius: 50%; }
 }
+
+/* ------------------------------------------------------------ phones: header
+   Logo on the left; Open, Search and Theme as one group of equal round buttons on the right. The tool bar has
+   nothing to show in the phone header (the floating bars carry the tools), and its empty box used to push the
+   Open button into the middle and the Theme button past the screen edge on phones narrower than 430 px. */
+@media (max-width: 700px) {
+  .topbar { gap: 4px; }
+  .topbar .toolbar { display: none !important; }
+  .file-actions { margin-left: auto; gap: 4px; flex: none; }
+  .top-right { margin-left: 0; gap: 4px; }
+  body.has-model .top-right { margin-left: auto; } /* Open moves to the bottom pill once a model is open */
+  .file-actions .tb, .top-right .tb { width: 40px; min-width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+  .file-actions .tb > span { display: none; }
+  .brand { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+}
+@media (max-width: 420px) {
+  .brand { gap: 7px; }
+  .brand-sep { display: none; }
+  .logo-main { font-size: 0.84rem; letter-spacing: 0.12em; }
+  .logo-byword { font-size: 9px; }
+  .logo-bankasi { font-size: 9.5px; letter-spacing: 0.13em; }
+  .logo-sup { font-size: 5px; }
+  .file-actions .tb, .top-right .tb { width: 38px; min-width: 38px; height: 38px; }
+}
+@media (max-width: 369px) { .logo-by { display: none; } }
+/* Touch screens have no hover: a tapped button must not keep a highlighted circle. */
+@media (hover: none) {
+  .tb:hover:not(.active) { background: transparent; }
+}
