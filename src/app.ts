@@ -8,7 +8,7 @@ import { t, LANG, LANG_PREFIX, applyStaticI18n } from './i18n';
 const tr = (s: string) => (s ? t(s) : '');
 import { History } from './history';
 import { Editor, type Primitive, type GizmoMode } from './editor';
-import { MeasureTool } from './tools/measure';
+import { MeasureTool, valueText, type MeasureMode } from './tools/measure';
 import { PaintTool } from './tools/paint';
 import { computeStats, checkClosedAsync, UNITS, type Unit, fmtLen, fmtNum, fmtInt, type ModelStats } from './stats';
 import { EXPORT_FORMATS, exportModel, exportObject, download, describeExport, exportBlocker, staysYUp, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
@@ -190,11 +190,13 @@ const state = {
 const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 await yieldToMain(); // after three.js and the other modules have been evaluated
 const viewer = new Viewer($('#viewport'));
+if (import.meta.env.DEV) (window as any).__viewer = viewer; // dev console handle
 await yieldToMain(); // after the WebGL context is created
 setSharedRenderer(viewer.renderer);
 const history = new History();
 const editor = new Editor(viewer, history);
 const measure = new MeasureTool(viewer);
+if (import.meta.env.DEV) (window as any).__measure = measure; // dev console handle
 const paint = new PaintTool(viewer, history);
 // ------------------------------------------------------------------ units: file units vs display units (OV-008)
 const dispUnit = (): Unit => (state.displayUnit === 'auto' ? state.unit : state.displayUnit);
@@ -1299,9 +1301,17 @@ function measureStepHint() {
   if (state.tool !== 'measure') return;
   const tap = isTouch() ? 'Tap' : 'Click';
   const n = measure.pendingCount;
-  const text = measure.mode === 'circle'
-    ? `${tap} point ${n + 1} of 3 around the hole · ${isTouch() ? 'Done' : 'Esc'} to stop`
-    : n ? `Now ${tap.toLowerCase()} the second point · ${isTouch() ? 'Done' : 'Esc'} to stop` : `${tap} the first point · snaps to corners · ${isTouch() ? 'Done' : 'Esc'} to stop`;
+  const stop = `${isTouch() ? 'Done' : 'Esc'} to stop`;
+  const h = measure.hoverTarget;
+  const over = h?.kind === 'circle' ? (h.showRadius ? `${tap} to keep this radius` : `${tap} to keep this diameter`) : h?.kind === 'edge' ? `${tap} to keep this edge length` : '';
+  let text: string;
+  if (measure.mode === 'circle') text = `${tap} point ${n + 1} of 3 around the hole · ${stop}`;
+  else if (n) text = `Now ${tap.toLowerCase()} the second point · snaps to corners, hole centres and edges · ${stop}`;
+  else if (over) text = `${over} · ${stop}`;
+  else if (measure.mode === 'diameter') text = `Point at a hole, shaft or round edge · ${stop}`;
+  else if (measure.mode === 'edge') text = `Point at an edge of the model · ${stop}`;
+  else if (measure.mode === 'smart') text = `Point at a hole or edge, or ${tap.toLowerCase()} a corner or face to start a distance · ${stop}`;
+  else text = `${tap} the first point · snaps to corners, hole centres and edges · ${stop}`;
   const hint = $('#toolHint');
   hint.textContent = tr(text);
   hint.classList.remove('hidden', 'fade');
@@ -1623,26 +1633,36 @@ function toolSection(): string {
           <input type="color" value="${m.color}" data-mcolor="${m.id}" aria-label="Colour of ${esc(m.name)}" class="mi-color"/>
           <div class="mi-body">
             <input class="mi-name" value="${esc(m.name)}" data-mname="${m.id}" aria-label="Name"/>
-            <div class="mi-main">${m.kind === 'circle' ? `⌀ ${fmtD(m.distance)}` : fmtD(m.distance)}</div>
+            <div class="mi-main">${valueText(m, fmtD)}</div>
+            ${m.info ? `<div class="mi-sub mi-what">${esc(m.info)}</div>` : ''}
             ${m.kind === 'circle'
-              ? `<div class="mi-sub">Radius ${fmtD(m.radius!)} · circumference ${fmtD(Math.PI * m.distance)}</div>`
+              ? `<div class="mi-sub">${m.showRadius ? `Diameter ${fmtD(m.distance)}` : `Radius ${fmtD(m.radius!)}`} · circumference ${fmtD(Math.PI * m.distance)}</div>`
               : `<div class="mi-sub">ΔX ${fmtNum(toDisp(m.delta.x))} · ΔY ${fmtNum(toDisp(m.delta.y))} · ΔZ ${fmtNum(toDisp(m.delta.z))} ${UNITS[dispUnit()].short}</div>
                  ${m.angle !== null ? `<div class="mi-sub">Angle between faces ${fmtNum(m.angle, 2)}°</div>` : ''}
                  ${m.parallelDistance !== null ? `<div class="mi-sub">Parallel faces gap ${fmtD(m.parallelDistance)}</div>` : m.planeDistance !== null ? `<div class="mi-sub">To first face's plane ${fmtD(m.planeDistance)}</div>` : ''}
                  ${m.snapA || m.snapB ? `<div class="mi-sub">Snapped: ${m.snapA || 'surface'} → ${m.snapB || 'surface'}</div>` : ''}`}
             ${m.stale ? `<div class="mi-sub warn-note">Measured before the model was edited. <button class="link-btn" data-mrefresh="${m.id}">Still correct</button> or remove it.</div>` : ''}
           </div>
-          <button class="node-btn" style="opacity:1" data-mcopy="${m.id}" aria-label="${t('Copy')} ${esc(m.kind === 'circle' ? `⌀ ${fmtD(m.distance)}` : fmtD(m.distance))}" title="${t('Copy value with unit')}">${icon('copy')}</button>
+          <button class="node-btn" style="opacity:1" data-mcopy="${m.id}" aria-label="${t('Copy')} ${esc(valueText(m, fmtD))}" title="${t('Copy value with unit')}">${icon('copy')}</button>
           <button class="node-btn" style="opacity:1" data-mhide="${m.id}" aria-label="${m.hidden ? 'Show' : 'Hide'} ${esc(m.name)}">${icon(m.hidden ? 'eyeoff' : 'eye')}</button>
           <button class="node-btn" style="opacity:1" data-mremove="${m.id}" aria-label="Remove ${esc(m.name)}">${icon('x')}</button>
         </div>`).join('');
       return `<div class="section">
         <div class="section-head"><span class="section-title">${t('Measure')}</span><span class="grow"></span>
           ${measure.list.length ? `<button class="chip" data-mexport>${icon('download')}JSON</button><button class="chip danger" data-mclear>${icon('trash')}${t('Clear')}</button>` : ''}</div>
-        <div class="seg" style="margin-bottom:8px"><button class="${measure.mode === 'distance' ? 'active' : ''}" data-mmode="distance">Distance</button><button class="${measure.mode === 'circle' ? 'active' : ''}" data-mmode="circle">Circle / hole</button></div>
-        <p class="note" style="margin-top:0">${measure.mode === 'circle' ? `${isTouch() ? 'Tap' : 'Click'} three points around a hole or round edge${measure.pendingCount ? ` (${measure.pendingCount}/3)` : ''}.` : `${isTouch() ? 'Tap' : 'Click'} a first point, then a second point.${isTouch() ? ' Drag with one finger to orbit between taps.' : ''}`}</p>
-        <div class="row"><label for="mSnap">Snap to</label><select id="mSnap" data-msnapmode>
-          ${([['auto', 'Corners, then edges'], ['corner', 'Corners only'], ['edge', 'Edges and midpoints'], ['face', 'Face centres'], ['off', 'Nothing (free point)']] as const).map(([k, l]) => `<option value="${k}" ${measure.snapMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="seg seg-4" style="margin-bottom:8px">${([['smart', 'Smart'], ['distance', 'Distance'], ['diameter', 'Diameter'], ['edge', 'Edge']] as const).map(([k, l]) => `<button class="${measure.mode === k || (k === 'diameter' && measure.mode === 'circle') ? 'active' : ''}" data-mmode="${k}">${l}</button>`).join('')}</div>
+        <p class="note" style="margin-top:0">${(() => {
+          const tap = isTouch() ? 'Tap' : 'Click';
+          switch (measure.mode) {
+            case 'smart': return `Point at a hole or round edge to see its diameter, or at an edge to see its length, then ${tap.toLowerCase()} to keep it. ${tap} a corner or face to start a distance.`;
+            case 'distance': return `${tap} two points. Snaps to corners, hole centres (point at the hole's wall or rim), edge midpoints and edges. Hold Shift on a rim for a point on the rim instead of its centre.`;
+            case 'diameter': return `Point at a hole, shaft, round edge or fillet: its diameter (or radius) shows up, ${tap.toLowerCase()} to keep it. <button class="link-btn" data-mmode="circle">Use 3 points instead</button>`;
+            case 'edge': return `Point at an edge of the model: straight edges give their length, round edges their radius and length.`;
+            default: return `${tap} three points around a hole or round edge${measure.pendingCount ? ` (${measure.pendingCount}/3)` : ''}. <button class="link-btn" data-mmode="diameter">Find holes automatically</button>`;
+          }
+        })()}${isTouch() ? ' Drag with one finger to orbit between taps.' : ''}</p>
+        ${measure.mode === 'distance' || measure.mode === 'smart' ? `<div class="row"><label for="mSnap">Snap to</label><select id="mSnap" data-msnapmode>
+          ${([['auto', 'Corners, hole centres, edges'], ['corner', 'Corners only'], ['centre', 'Hole centres only'], ['edge', 'Edges and midpoints'], ['off', 'Nothing (free point)']] as const).map(([k, l]) => `<option value="${k}" ${measure.snapMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
         <div class="row"><label for="mRadius">Snap distance</label><input type="range" id="mRadius" min="4" max="40" step="1" value="${measure.snapRadius}" data-msnapradius aria-label="Snap distance in pixels"/></div>
         ${editor.selected && editor.selected !== viewer.model ? `<label class="check"><input type="checkbox" data-monlysel ${measureOnlySelected ? 'checked' : ''}/> Only pick on the selected part</label>` : ''}
         <p class="note">Measurements use the displayed triangle mesh. For CAD files that is a close approximation, not the exact surface.</p>
@@ -2018,14 +2038,14 @@ details.addEventListener('click', (e) => {
   if (d.mcopy) {
     // Copies exactly what the row shows, in the display unit and precision (D05).
     const m = measure.list.find((x) => x.id === Number(d.mcopy));
-    if (m) { const v = m.kind === 'circle' ? `⌀ ${fmtD(m.distance)}` : fmtD(m.distance); navigator.clipboard?.writeText(v).then(() => toast(`${tr('Copied')} ${v}`), () => toast(v)); }
+    if (m) { const v = valueText(m, fmtD); navigator.clipboard?.writeText(v).then(() => toast(`${tr('Copied')} ${v}`), () => toast(v)); }
     return;
   }
   if (d.mhide) { const m = measure.list.find((x) => x.id === Number(d.mhide)); if (m) measure.setHidden(m.id, !m.hidden); }
   if (d.mrefresh) measure.refresh(Number(d.mrefresh));
   if ('mexport' in d) download(new Blob([JSON.stringify({ model: state.modelName, unit: UNITS[dispUnit()].label, measurements: measure.toJSON((v) => fmtD(v)) }, null, 2)], { type: 'application/json' }), `${baseFileName()}-measurements.json`);
   if ('mclear' in d) measure.clear();
-  if (d.mmode) { measure.mode = d.mmode as 'distance' | 'circle'; measure.setActive(true); renderDetails(); }
+  if (d.mmode) { measure.setMode(d.mmode as MeasureMode); measure.setActive(true); renderDetails(); }
   if (d.pmode) { paint.mode = d.pmode as any; setTool('paint'); setTool('paint'); }
   if (d.pswatch) { paint.color.set(d.pswatch); renderDetails(); }
   if (d.secaxis) viewer.setSection({ axis: d.secaxis as Axis });

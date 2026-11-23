@@ -55,7 +55,10 @@ export class Viewer {
   private ensureEnvironment() {
     if (!this.scene.environment && this.lighting !== 'flat' && this.world.children.length) this.scene.environment = this.envTexture;
   }
+  /** Key light that moves with the camera, from above-left, so faces facing different ways get different shades. */
   headlight: THREE.DirectionalLight;
+  /** Weaker light from the lower right that keeps the shadow side readable. */
+  fill: THREE.DirectionalLight;
   ambient: THREE.HemisphereLight;
   private listeners = new Set<() => void>();
   private frameHooks = new Set<(dt: number) => void>();
@@ -88,6 +91,8 @@ export class Viewer {
     this.renderer.setPixelRatio(this.targetPixelRatio());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
+    // Slightly under 1 so a white model's brightest face stays below clipping and keeps its shading.
+    this.renderer.toneMappingExposure = 0.9;
     this.renderer.localClippingEnabled = true;
     this.renderer.autoClear = false;
     container.appendChild(this.renderer.domElement);
@@ -97,15 +102,25 @@ export class Viewer {
     container.appendChild(this.labels.domElement);
 
     // Environment lighting is built lazily (see envTexture / ensureEnvironment): it is the most expensive start-up step.
-    this.scene.environmentIntensity = 0.9;
+    this.scene.environmentIntensity = 0.4;
 
-    this.ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-    this.headlight = new THREE.DirectionalLight(0xffffff, 1.2);
+    // Lighting balance: a weak environment and sky light, a clear key light and a soft fill. Before, strong
+    // environment light plus a key light shining straight down the view made every face equally bright, so
+    // light-coloured models looked like flat glowing white shapes.
+    this.ambient = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.35);
+    this.headlight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.fill = new THREE.DirectionalLight(0xffffff, 0.35);
     this.scene.add(this.ambient, this.world, this.overlay);
 
     this.perspective = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
-    this.perspective.add(this.headlight);
-    this.headlight.position.set(0.5, 1, 1);
+    // Both lights and their targets ride on the camera. The targets matter: a directional light aims at its
+    // target, which defaults to the world origin, so with models in millimetres (camera hundreds of units away)
+    // a small camera-space offset changed nothing and the light always came straight from the viewer.
+    this.headlight.position.set(-0.8, 1.2, 0.4);
+    this.headlight.target.position.set(0, 0, -1);
+    this.fill.position.set(1, -0.2, 0.2);
+    this.fill.target.position.set(0, 0, -1);
+    this.perspective.add(this.headlight, this.headlight.target, this.fill, this.fill.target);
     this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
     this.scene.add(this.perspective, this.ortho);
     this.camera = this.perspective;
@@ -461,7 +476,7 @@ export class Viewer {
       const dist = this.perspective.position.distanceTo(this.controls.target) / this.ortho.zoom;
       this.perspective.position.copy(this.controls.target).addScaledVector(dir, dist);
     }
-    if (next === this.ortho) this.ortho.add(this.headlight); else this.perspective.add(this.headlight);
+    next.add(this.headlight, this.headlight.target, this.fill, this.fill.target);
     this.camera = next;
     this.controls.object = next;
     this.viewHelper.dispose();
@@ -516,9 +531,10 @@ export class Viewer {
   setLighting(preset: 'studio' | 'soft' | 'flat') {
     this.lighting = preset;
     this.scene.environment = preset === 'flat' || !this.world.children.length ? null : this.envTexture;
-    this.scene.environmentIntensity = preset === 'soft' ? 0.5 : 0.9;
-    this.headlight.intensity = preset === 'flat' ? 2.2 : preset === 'soft' ? 0.8 : 1.2;
-    this.ambient.intensity = preset === 'flat' ? 1.4 : 0.6;
+    this.scene.environmentIntensity = preset === 'soft' ? 0.5 : 0.4;
+    this.headlight.intensity = preset === 'flat' ? 1.1 : preset === 'soft' ? 0.9 : 1.5;
+    this.fill.intensity = preset === 'flat' ? 0.7 : 0.35;
+    this.ambient.intensity = preset === 'flat' ? 1.0 : preset === 'soft' ? 0.5 : 0.35;
   }
 
   setGrid(on: boolean) { this.showGrid = on; if (this.grid) this.grid.visible = on; this.emit(); }

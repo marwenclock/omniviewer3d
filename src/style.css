@@ -1334,3 +1334,9 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
   .qc-meta .qc-dims { display: block; }
   .qc-meta .qc-dims::before { content: none; }
 }
+
+/* Measure: four modes across the panel, live feature preview, what-was-measured line */
+.seg.seg-4 { display: flex; width: 100%; }
+.seg.seg-4 button { flex: 1; padding: 5px 4px; }
+.measure-label.measure-preview { background: #3ddc97; color: #06140d; border-color: #3ddc97; font-weight: 600; pointer-events: none; }
+.mi-sub.mi-what { color: var(--ink-2); }
