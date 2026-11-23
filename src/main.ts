@@ -4,15 +4,12 @@ import { applyStaticI18n, t } from './i18n';
 // Boot: check that the browser can draw 3D before loading the app (audit OV-006).
 // Without WebGL the readable page and its links stay usable and the visitor gets an explanation.
 
+// No probe context here: creating a WebGL context costs hundreds of milliseconds on GPU-less machines (Lighthouse TBT),
+// so the viewer's own context is the test. If it can't be created, three.js throws and the import below lands in showNoWebGL.
 function hasWebGL(): boolean {
-  try {
-    const c = document.createElement('canvas');
-    const gl = (c.getContext('webgl2') || c.getContext('webgl')) as WebGLRenderingContext | null;
-    // Release the probe context at once so it doesn't hold GPU memory next to the viewer's own context (phones).
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    return !!gl;
-  } catch { return false; }
+  return 'WebGL2RenderingContext' in window || 'WebGLRenderingContext' in window;
 }
+const isWebGLFailure = (msg: string) => /webgl|context/i.test(msg) && !/import|module|fetch|chunk/i.test(msg);
 
 function showNoWebGL(reason: string) {
   document.body.classList.add('no-webgl');
@@ -39,7 +36,11 @@ function showNoWebGL(reason: string) {
 
 applyStaticI18n();
 if (!hasWebGL()) showNoWebGL(t('No WebGL context could be created.'));
-else import('./app').catch((e) => { console.error(e); showLoadFailed(String(e?.message || e)); });
+else import('./app').catch((e) => {
+  console.error(e);
+  const msg = String(e?.message || e);
+  if (isWebGLFailure(msg)) showNoWebGL(t('No WebGL context could be created.')); else showLoadFailed(msg);
+});
 
 /** The app code failed to load or start, while 3D graphics work: say that, not "no WebGL" (audit F29).
  *  The usual cause is a cached page from before an update, or a dropped connection. */

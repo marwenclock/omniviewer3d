@@ -48,7 +48,8 @@ export function setLook(name: string) {
   currentLook = name in LOOKS ? name : 'studio';
   const v = ctx.viewer;
   v.setLighting(currentLook === 'soft' ? 'soft' : currentLook === 'flat' ? 'flat' : 'studio');
-  v.scene.environment = envFor(currentLook);
+  // Studio / soft use the viewer's own environment, which setLighting builds lazily once a model is open (start-up TBT).
+  if (currentLook !== 'studio' && currentLook !== 'soft') v.scene.environment = envFor(currentLook);
   if (currentLook === 'night') { v.headlight.intensity = 0.5; v.ambient.intensity = 0.25; }
   if (currentLook === 'sunset') { v.headlight.color.set('#ffd9b0'); } else v.headlight.color.set('#ffffff');
   applyBackground();

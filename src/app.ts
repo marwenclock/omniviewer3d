@@ -2856,7 +2856,15 @@ setWorkspace('all'); // workspace filtering removed: every tool is always availa
 applyPagePrimary();
 renderAll();
 renderRecent();
-requestAnimationFrame(() => { layoutToolbar(); if (!location.hash.includes('model=')) startLandingPreview(); });
+requestAnimationFrame(layoutToolbar);
+// The turning sample needs its own WebGL context and lighting (seconds of main-thread work on GPU-less machines):
+// start it on the first sign of a person (pointer, key, wheel, touch, scroll) instead of during page load (desktop TBT).
+const LANDING_START_EVENTS = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+const startLandingOnInput = () => {
+  LANDING_START_EVENTS.forEach((ev) => removeEventListener(ev, startLandingOnInput, true));
+  if (!location.hash.includes('model=')) startLandingPreview();
+};
+LANDING_START_EVENTS.forEach((ev) => addEventListener(ev, startLandingOnInput, { capture: true, passive: true }));
 // Large meshes: accelerate picking with a bounding-volume tree, built on demand (OV-091).
 import('three-mesh-bvh').then(({ acceleratedRaycast, computeBoundsTree, disposeBoundsTree }) => {
   (THREE.BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree;
