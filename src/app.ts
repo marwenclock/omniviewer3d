@@ -31,6 +31,9 @@ import { ProprietaryFormatError, PROPRIETARY, extractPreview, type ProprietaryIn
 import { compareWith } from './features/compare';
 import { initQuickConvert, openQuickConvert, closeQuickConvert, qcAdd, qcIsOpen } from './features/quickconvert';
 import { initViewCube } from './features/viewcube';
+import { initSelectionBar } from './features/selbar';
+// eslint-disable-next-line no-var -- read by updateToolbar(), which runs before the bar is created
+var selBar: ReturnType<typeof initSelectionBar> | undefined;
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -626,6 +629,7 @@ function updateToolbar() {
   $$<HTMLButtonElement>('[data-action="redo"]').forEach((b) => { b.disabled = !history.canRedo; b.dataset.tip = history.canRedo ? `${t('Redo')}: ${history.nextRedo} (${mod}Y)` : `${t('Redo')} (${mod}Y)`; b.setAttribute('aria-label', b.dataset.tip); });
   updateModelBar();
   updateBadges();
+  selBar?.sync();
 }
 
 function closeMenus() { $$('.menu.open').forEach((m) => m.classList.remove('open')); }
@@ -647,7 +651,7 @@ document.addEventListener('click', (e) => {
       menu.classList.add('open');
       // Open downwards; buttons near the bottom of the window (a bottom dock) open upwards, and buttons in a
       // vertical tool column open to their right.
-      const h = menu.offsetHeight, side = !!menuBtn.closest('.lab-split .tb-group:not([data-group="view"]), .lab-split .tb-more-wrap, .lab-railnav .rail-edit');
+      const h = menu.offsetHeight, side = !!menuBtn.closest('.lab-split .tb-group:not([data-group="view"]), .lab-split .tb-more-wrap, .lab-railnav');
       const below = r.bottom + 6 + h <= window.innerHeight - 8;
       menu.style.top = (side ? Math.max(8, Math.min(r.top, window.innerHeight - h - 8)) : below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
       menu.style.left = (side ? r.right + 8 : Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
@@ -2891,6 +2895,28 @@ Object.assign(ctx, {
 initFeatures();
 initQuickConvert();
 initViewCube();
+selBar = initSelectionBar((a) => {
+  const o = editor.selected;
+  if (!o) return;
+  const list = editor.selection;
+  switch (a) {
+    case 'focus': viewer.fit(o); break;
+    case 'hide': editor.setVisibility(list, false, list.length > 1 ? `Hide ${list.length} parts` : `Hide ${o.name || 'part'}`); selectObject(null); break;
+    case 'isolate': if (list.length > 1) isolateMany(list); else isolate(o); break;
+    case 'dup': editor.duplicateSelected(); break;
+    case 'delete': editor.deleteSelection(); break;
+    case 'snap': editor.setSnap(!editor.snap); break;
+    case 'deselect': selectObject(null); break;
+    case 'details':
+      document.body.classList.remove('no-right');
+      $$<HTMLElement>('[data-rtab]').forEach((b) => b.classList.toggle('active', b.dataset.rtab === 'details'));
+      $('#rtab-details').classList.remove('hidden');
+      $('#rtab-settings').classList.add('hidden');
+      renderDetails();
+      break;
+  }
+  updateToolbar();
+});
 // Converter pages open Quick Convert: /convert/ to choose a target, /<from>-to-<to>/ converts and downloads on drop.
 if (PAGE.kind === 'convert' && PAGE.to) openQuickConvert({ to: PAGE.to, instant: true });
 else if (PAGE.tool === 'convert') openQuickConvert();

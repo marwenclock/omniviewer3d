@@ -142,3 +142,30 @@ body.embed .lab-host, body.embed .lab-railnav { display: none !important; }
 @media (max-width: 1180px) {
   .lab-host .tb > span, .lab-railnav .tb > span { display: inline; }
 }
+
+/* ---------- One rail with every tool (rail / combo). The floating tool column, its Tools button and the old
+   Edit group are hidden: those tools are in the rail, and Move / Rotate / Scale follow the selection. */
+body.lab-railed .lab-host .tb-group[data-group='inspect'],
+body.lab-railed .lab-host .tb-group[data-group='prepare'],
+body.lab-railed .lab-host .tb-group[data-group='paint'],
+body.lab-railed .lab-host .tb-group[data-group='edit'],
+body.lab-railed .lab-host .tb-more-wrap,
+body.lab-railed .lab-host .tb-overflow { display: none !important; }
+body.lab-railed #menu-tools > .rail-dup { display: none; }
+/* Two columns: every tool fits on a laptop screen at a readable size, with a heading per group */
+body.lab-railed .lab-railnav { width: 128px; padding: 6px 8px; gap: 0; }
+body.lab-railed .lab-railnav .rail-group { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 0 0 6px; border-bottom: 0; }
+body.lab-railed .lab-railnav .rail-label {
+  display: block; grid-column: 1 / -1; padding: 8px 4px 4px; text-align: left;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; line-height: 1.1; color: var(--muted);
+}
+body.lab-railed .lab-railnav .rail-btn { padding: 7px 2px 6px; gap: 4px; font-size: 10.5px; }
+body.lab-railed .lab-railnav .rail-btn svg { width: 18px; height: 18px; }
+body.lab-railed .lab-railnav .rail-group:last-child { margin-top: auto; padding: 6px 0 0; border-top: 1px solid var(--line); }
+body.lab-railed .lab-railnav .rail-group:last-child .rail-label { display: none; }
+body.lab-railed .lab-railnav .rail-group:last-child .rail-btn { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 6px; }
+@media (max-height: 760px) {
+  body.lab-railed .lab-railnav .rail-btn { padding: 4px 2px; gap: 2px; font-size: 9.5px; }
+  body.lab-railed .lab-railnav .rail-btn svg { width: 16px; height: 16px; }
+  body.lab-railed .lab-railnav .rail-label { padding: 5px 4px 2px; }
+}

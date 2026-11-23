@@ -4,6 +4,7 @@
 // The real buttons are moved (not copied) wherever possible, so every click handler, active state and
 // disabled state keeps working.
 import './layoutlab.css';
+import { hydrateIcons } from './icons';
 
 const VARIANTS: Record<string, string> = {
   classic: 'Classic',
@@ -84,53 +85,72 @@ export function initLayoutLab() {
   if (layout === 'rail' || layout === 'combo') buildRail();
 }
 
-/** Variant B: the tools hidden in the "Tools" menu get a permanent, labelled column on the far left. */
+/** Every tool once, in one labelled column on the far left, grouped by what you are doing. Move / Rotate / Scale
+ *  are not here: they appear next to the part you select (features/selbar.ts) and stay on W / E / R. The floating
+ *  tool column and the "Tools" button are hidden in this layout, so there is one place to look instead of three. */
+const RAIL: { label: string; items: { tool?: string; menu?: string; icon: string; name: string; tip: string }[] }[] = [
+  { label: 'Inspect', items: [
+    { tool: 'measure', icon: 'ruler', name: 'Measure', tip: 'Measure (M)' },
+    { tool: 'section', icon: 'section', name: 'Section', tip: 'Section plane (X)' },
+    { tool: 'explode', icon: 'explode', name: 'Explode', tip: 'Explode view' },
+    { tool: 'compare', icon: 'compare', name: 'Compare', tip: 'Compare models' },
+    { tool: 'clash', icon: 'clash', name: 'Clash', tip: 'Clash check' },
+    { tool: 'report', icon: 'report', name: 'Report', tip: 'Inspection report' },
+    { tool: 'drawing', icon: 'drawing', name: 'Drawing', tip: 'Technical drawing' },
+  ] },
+  { label: 'Print & fix', items: [
+    { tool: 'repair', icon: 'repair', name: 'Repair', tip: 'Repair & check' },
+    { tool: 'bed', icon: 'bed', name: 'Bed', tip: 'Printer bed check' },
+    { tool: 'thickness', icon: 'thickness', name: 'Walls', tip: 'Wall thickness' },
+    { tool: 'overhang', icon: 'overhang', name: 'Overhang', tip: 'Overhangs' },
+    { tool: 'reduce', icon: 'reduce', name: 'Reduce', tip: 'Reduce & optimise' },
+    { tool: 'hollow', icon: 'hollow', name: 'Hollow', tip: 'Hollow' },
+    { tool: 'cut', icon: 'cut', name: 'Cut', tip: 'Cut / split' },
+    { tool: 'layflat', icon: 'layflat', name: 'Lay flat', tip: 'Place face on floor' },
+  ] },
+  { label: 'Build', items: [
+    { menu: 'add', icon: 'shapes', name: 'Shapes', tip: 'Add a box, sphere, cylinder…' },
+    { tool: 'paint', icon: 'brush', name: 'Paint', tip: 'Paint (P)' },
+    { tool: 'text', icon: 'text', name: '3D text', tip: '3D text' },
+    { tool: 'svg', icon: 'logo', name: 'SVG logo', tip: 'SVG logo' },
+    { tool: 'boolean', icon: 'boolean', name: 'Boolean', tip: 'Combine / subtract' },
+  ] },
+  { label: 'More', items: [
+    { menu: 'tools', icon: 'more', name: 'More', tip: 'Files & textures, saved views, batch convert, AR…' },
+  ] },
+];
+
 function buildRail() {
-  const menu = document.getElementById('menu-tools')!;
   const rail = document.createElement('nav');
   rail.className = 'lab-railnav';
   rail.setAttribute('aria-label', 'All tools');
-  let group: HTMLElement | null = null;
-  for (const el of Array.from(menu.children) as HTMLElement[]) {
-    if (el.classList.contains('menu-label')) {
-      if (el.textContent === 'More') break;
-      group = document.createElement('div');
-      group.className = 'rail-group';
-      const h = document.createElement('div');
-      h.className = 'rail-label';
-      h.textContent = el.textContent;
-      group.appendChild(h);
-      rail.appendChild(group);
-    } else if (el.tagName === 'BUTTON' && group && el.dataset.tool) {
+  for (const sec of RAIL) {
+    const group = document.createElement('div');
+    group.className = 'rail-group';
+    group.innerHTML = `<div class="rail-label">${sec.label}</div>`;
+    for (const it of sec.items) {
       const b = document.createElement('button');
       b.className = 'rail-btn needs-model';
-      b.dataset.tool = el.dataset.tool;
-      b.dataset.tip = el.textContent!.trim();
-      b.setAttribute('aria-label', el.textContent!.trim());
-      const icon = el.querySelector('i, svg')!.cloneNode(true) as HTMLElement;
-      const label = document.createElement('span');
-      label.textContent = railName(el.textContent!.trim());
-      b.append(icon, label);
+      if (it.tool) b.dataset.tool = it.tool;
+      if (it.menu) { b.dataset.menu = it.menu; b.setAttribute('aria-haspopup', 'menu'); }
+      if (it.menu === 'add' || it.menu === 'tools') b.classList.remove('needs-model'); // work in an empty scene too
+      b.dataset.tip = it.tip;
+      b.setAttribute('aria-label', it.tip.replace(/ \(.\)$/, ''));
+      b.innerHTML = `<i data-icon="${it.icon}"></i><span>${it.name}</span>`;
       group.appendChild(b);
     }
+    rail.appendChild(group);
   }
-  // Move / Rotate / Scale / Add shape join the rail as its first section.
-  const edit = document.querySelector<HTMLElement>('#toolbar .tb-group[data-group="edit"]')!;
-  const sec = document.createElement('div');
-  sec.className = 'rail-group rail-edit';
-  sec.innerHTML = '<div class="rail-label">Edit</div>';
-  sec.appendChild(edit);
-  labHome.set(edit, sec);
-  rail.prepend(sec);
+  // The "More" menu keeps only what the rail doesn't already show.
+  const menu = document.getElementById('menu-tools')!;
+  for (const el of Array.from(menu.children) as HTMLElement[]) {
+    const t = (el as HTMLElement).dataset.tool;
+    if (el.classList.contains('menu-label') || el.classList.contains('menu-sep')) el.classList.add('rail-dup');
+    else if (t && t !== 'assets' && t !== 'views') el.classList.add('rail-dup');
+  }
+  document.body.classList.add('lab-railed');
   document.getElementById('layout')!.prepend(rail);
-}
-function railName(s: string) {
-  const map: Record<string, string> = {
-    'Files & textures': 'Files', 'Clash check': 'Clash', 'Saved views': 'Views', 'Inspection report': 'Report',
-    'Technical drawing': 'Drawing', 'Reduce & optimise': 'Reduce', 'Cut / split': 'Cut', 'Place face on floor': 'Lay flat',
-    '3D text': '3D text', 'SVG logo': 'SVG logo', 'Combine / subtract': 'Boolean',
-  };
-  return map[s] || s;
+  hydrateIcons(rail);
 }
 
 function addSwitcher(current: string) {

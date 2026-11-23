@@ -3,6 +3,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import type { Viewer } from './viewer';
 import type { History } from './history';
 import { defaultMaterial } from './loaders';
+import { styleGizmo } from './gizmostyle';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate' | 'scale';
 export const PRIMITIVES = ['box', 'sphere', 'cylinder', 'cone', 'torus', 'plane', 'capsule', 'icosahedron'] as const;
@@ -28,7 +29,8 @@ export class Editor {
 
   constructor(private viewer: Viewer, private history: History) {
     this.transform = new TransformControls(viewer.camera, viewer.renderer.domElement);
-    this.transform.setSize(0.9);
+    this.transform.setSize(1.05);
+    styleGizmo(this.transform);
     const helper = this.transform.getHelper();
     helper.userData.helper = true;
     helper.userData.noShot = true;
