@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { initLayoutLab, labHome } from './layoutlab';
 import { Viewer, disposeObject, type ViewName, type DisplayMode, type Axis } from './viewer';
 import { loadFiles, filesFromUrls, pickerAccept, FORMATS, setSharedRenderer, extOf, filePaths, MODEL_EXTS as MODEL_EXTS_APP, type ResourceInfo } from './loaders';
 import { detectCapabilities, unavailableReason, type Capabilities } from './capabilities';
@@ -636,8 +637,12 @@ document.addEventListener('click', (e) => {
     if (!wasOpen) {
       const r = menuBtn.getBoundingClientRect();
       menu.classList.add('open');
-      menu.style.top = r.bottom + 6 + 'px';
-      menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+      // Open downwards; buttons near the bottom of the window (a bottom dock) open upwards, and buttons in a
+      // vertical tool column open to their right.
+      const h = menu.offsetHeight, side = !!menuBtn.closest('.lab-split .tb-group:not([data-group="view"]), .lab-split .tb-more-wrap, .lab-railnav .rail-edit');
+      const below = r.bottom + 6 + h <= window.innerHeight - 8;
+      menu.style.top = (side ? Math.max(8, Math.min(r.top, window.innerHeight - h - 8)) : below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+      menu.style.left = (side ? r.right + 8 : Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
     }
     return;
   }
@@ -742,7 +747,7 @@ document.addEventListener('pointerover', (e) => {
   tip.classList.add('show');
   const w = tip.offsetWidth;
   tip.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, r.left + r.width / 2 - w / 2)) + 'px';
-  tip.style.top = r.bottom + 8 + 'px';
+  tip.style.top = (r.bottom + 90 > window.innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + 'px';
 });
 document.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('[data-tip]')) tip.classList.remove('show'); });
 
@@ -768,7 +773,7 @@ function layoutToolbar() {
   const more = $('#tbOverflow');
   const ctx = document.body.dataset.ctx || 'all';
   // Put every group back in its original place before measuring.
-  for (const g of TB_ORDER) { bar.insertBefore(g, more); g.classList.remove('overflowed'); g.hidden = false; }
+  for (const g of TB_ORDER) { const home = labHome.get(g); if (home) home.appendChild(g); else bar.insertBefore(g, more); g.classList.remove('overflowed'); g.hidden = false; }
   more.classList.add('hidden');
   // Workspace filter: groups tagged with other workspaces are hidden.
   for (const g of TB_ORDER) { const tags = g.dataset.ctx; if (ctx !== 'all' && tags && !tags.split(' ').includes(ctx)) g.hidden = true; }
@@ -777,7 +782,7 @@ function layoutToolbar() {
   // lowest priority first. File and Undo/Redo go last, and only when nothing else is left.
   bar.classList.remove('tb-compact');
   if (!fits()) bar.classList.add('tb-compact');
-  const byPrio = TB_ORDER.filter((g) => !g.hidden).sort((a, b) => Number(b.dataset.prio || 0) - Number(a.dataset.prio || 0) || TB_ORDER.indexOf(b) - TB_ORDER.indexOf(a));
+  const byPrio = TB_ORDER.filter((g) => !g.hidden && !labHome.has(g)).sort((a, b) => Number(b.dataset.prio || 0) - Number(a.dataset.prio || 0) || TB_ORDER.indexOf(b) - TB_ORDER.indexOf(a));
   for (const g of byPrio) {
     if (fits()) break;
     g.classList.add('overflowed'); g.hidden = true;
@@ -790,7 +795,7 @@ function layoutToolbar() {
 }
 function placeToolStrip() {
   const strip = $('#tbStrip'), r = $('#tbOverflow').getBoundingClientRect();
-  strip.style.top = `${$('#topbar').getBoundingClientRect().bottom + 6}px`;
+  strip.style.top = document.body.classList.contains('lab') ? `${r.top - strip.offsetHeight - 8}px` : `${$('#topbar').getBoundingClientRect().bottom + 6}px`;
   strip.style.left = `${Math.max(8, Math.min(r.right - strip.offsetWidth, window.innerWidth - strip.offsetWidth - 8))}px`;
 }
 function openToolStrip() {
@@ -2852,6 +2857,7 @@ registerMainContextActions();
 
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 applyStaticI18n();
+initLayoutLab();
 setWorkspace('all'); // workspace filtering removed: every tool is always available
 applyPagePrimary();
 renderAll();

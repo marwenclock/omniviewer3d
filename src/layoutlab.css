@@ -1,0 +1,123 @@
+/* Layout lab (?layout=dock | rail | split). Only applies when body has .lab-* classes. */
+
+/* ---------- variant switcher (dev / ?layout only) */
+.lab-switch {
+  position: fixed; left: 50%; top: calc(var(--top) + 10px); transform: translateX(-50%); z-index: 70;
+  display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 99px;
+  background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px dashed var(--accent, #6cf); backdrop-filter: blur(10px);
+  font-size: 11.5px;
+}
+.lab-switch b { padding: 0 8px 0 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px; }
+.lab-switch a { padding: 5px 11px; border-radius: 99px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.lab-switch a:hover { background: var(--surface-2); }
+.lab-switch a.on { background: var(--ink); color: var(--bg); }
+.lab .tool-hint { top: 52px; }
+
+/* ---------- header without the tool bar */
+.lab .model-bar { flex: 1; min-width: 0; }
+.lab .top-right { margin-left: auto; }
+
+/* ---------- floating host over the 3D view */
+.lab-host { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+.lab-host .toolbar { pointer-events: none; overflow: visible; }
+.lab-host .tb-group, .lab-host .tb-more-wrap { pointer-events: auto; }
+.lab .toolbar.tb-compact .tb > span { display: inline; }
+.lab .toolbar.tb-compact .tb { padding: 0 6px; }
+
+/* Shared look of a floating pill (like the reference: dark glass, icon over caption) */
+.lab-host .tb {
+  flex-direction: column; gap: 3px; height: 50px; min-width: 48px; padding: 0 7px; border-radius: 10px;
+  font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em; text-transform: none; color: var(--ink-2);
+}
+.lab-host .tb > svg:not(.chev), .lab-host .tb > i[data-icon]:not(.chev) { width: 18px; height: 18px; }
+.lab-host .tb > span { line-height: 1; }
+.lab-host .tb .chev { position: absolute; top: 5px; right: 3px; width: 10px; height: 10px; margin: 0; }
+.lab-host .tb:hover { color: var(--ink); }
+.lab-host .tb.active { color: var(--bg); }
+
+/* ---------- A + B: one bottom dock; undo/redo bottom-left, output tools top-right */
+.lab-dock .lab-host, .lab-rail .lab-host { display: flex; align-items: flex-end; justify-content: center; padding: 0 12px 14px; }
+.lab-dock .lab-host .toolbar,
+.lab-rail .lab-host .toolbar {
+  position: static; flex: none; width: max-content; max-width: 100%;
+  gap: 0; padding: 5px 6px; border-radius: 16px; pointer-events: auto;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line-2);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45); backdrop-filter: blur(14px);
+}
+.lab-dock .tb-group, .lab-rail .tb-group { padding: 0 4px; gap: 1px; }
+.lab-dock .tb-more-wrap, .lab-rail .tb-more-wrap { padding-left: 4px; margin-left: 2px; border-left: 1px solid var(--line); }
+.lab-pill {
+  position: absolute; display: flex; align-items: center; padding: 4px; border: 1px solid var(--line-2); border-radius: 14px; pointer-events: auto;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.lab-pill .tb-group { padding: 0 3px; gap: 1px; }
+.lab-pill .tb-group + .tb-group { border-left: 1px solid var(--line); }
+.lab-tr { right: 12px; top: 12px; }
+.lab-dock .viewcube, .lab-rail .viewcube { bottom: 84px; }
+.lab-dock .ctx-bar, .lab-rail .ctx-bar { bottom: 86px; }
+.lab .tb-overflow:not(.hidden) { display: inline-flex !important; }
+.lab .tb-strip:not(.hidden) { display: flex !important; }
+
+/* ---------- B: labelled tool rail on the far left */
+.lab-railnav { flex: none; }
+.lab-railnav {
+  width: 78px; display: flex; flex-direction: column; gap: 4px; padding: 10px 6px; overflow-y: auto; scrollbar-width: none;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.rail-group { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.rail-group:last-child { border-bottom: 0; }
+.rail-label { padding: 6px 0 4px; text-align: center; font-size: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.rail-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 10px;
+  font-size: 10.5px; color: var(--ink-2); line-height: 1.1; text-align: center;
+}
+.rail-btn i[data-icon] { width: 18px; height: 18px; }
+.rail-btn:hover { background: var(--surface-2); color: var(--ink); }
+.rail-btn.active { background: var(--ink); color: var(--bg); }
+.lab-rail .tb-more-wrap .tb > span:not(.dl) { display: inline; }
+
+/* ---------- C: split edges. Tools in a column on the left of the view, camera at the bottom, output top-right */
+.lab-split .lab-host .toolbar {
+  position: static; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+  gap: 8px; padding: 0 0 0 12px;
+}
+.lab-split .tb-group, .lab-split .tb-more-wrap {
+  flex-direction: column; gap: 1px; padding: 4px; border: 1px solid var(--line-2); border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.lab-split .tb-group:first-child { border: 1px solid var(--line-2); }
+.lab-split .tb-group .tb, .lab-split .tb-more-wrap .tb { width: 54px; height: 46px; min-width: 0; padding: 0 2px; }
+/* camera controls: bottom centre, horizontal */
+.lab-bc { left: 50%; bottom: 14px; transform: translateX(-50%); }
+.lab-split .lab-bc .tb-group { flex-direction: row; padding: 0 3px; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.lab-split .lab-bc .tb-group + .tb-group { border-left: 1px solid var(--line); }
+.lab-split .lab-bc .tb { width: auto; min-width: 50px; padding: 0 8px; }
+/* screenshot / video / share: top right */
+.lab-split .tb-group[data-group='present'] { position: absolute; right: 12px; top: 12px; flex-direction: row; }
+.lab-split .ctx-bar { bottom: 80px; }
+
+/* nothing floats over the welcome screen */
+body.lab:not(.has-model) .lab-host, body.lab:not(.has-model) .lab-railnav { display: none; }
+.rail-btn svg { width: 18px; height: 18px; }
+
+/* B: the moved Edit group inside the rail */
+.lab-railnav .rail-edit .tb-group { flex-direction: column; gap: 2px; padding: 0; border: 0; }
+.lab-railnav .rail-edit .tb, .lab-railnav .rail-edit .dropdown { width: 100%; }
+.lab-railnav .rail-edit .tb {
+  flex-direction: column; gap: 4px; height: auto; padding: 8px 2px; border-radius: 10px;
+  font-size: 10.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-2);
+}
+.lab-railnav .rail-edit .tb > svg:not(.chev) { width: 18px; height: 18px; }
+.lab-railnav .rail-edit .tb .chev { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; margin: 0; }
+.lab-railnav .rail-edit .tb.active { color: var(--bg); }
+.rail-btn { padding: 7px 2px; }
+
+/* B: fit the whole rail on a 900px-tall window: thin separators instead of headings */
+.lab-railnav { height: 100%; min-height: 0; padding: 6px 6px; gap: 3px; }
+.lab-railnav .rail-label { display: none; }
+.lab-railnav .rail-group { padding-bottom: 3px; gap: 0; }
+.lab-railnav .rail-btn, .lab-railnav .rail-edit .tb { padding: 6px 2px; gap: 3px; font-size: 10px; }
+
+/* D: rail + split. The Edit group sits in the rail, so it drops the floating-panel look it gets from split */
+.lab-railnav .rail-edit .tb-group { background: none; box-shadow: none; backdrop-filter: none; border-radius: 0; }
+.lab-railnav .rail-edit .tb { width: 100%; }
