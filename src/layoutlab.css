@@ -1,4 +1,4 @@
-/* Layout lab (?layout=dock | rail | split). Only applies when body has .lab-* classes. */
+/* Tool bar layouts (see layoutlab.ts). Only applies when body has .lab-* classes; D (combo) is the desktop default. */
 
 /* ---------- variant switcher (dev / ?layout only) */
 .lab-switch {
@@ -11,7 +11,7 @@
 .lab-switch a { padding: 5px 11px; border-radius: 99px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
 .lab-switch a:hover { background: var(--surface-2); }
 .lab-switch a.on { background: var(--ink); color: var(--bg); }
-.lab .tool-hint { top: 52px; }
+.lab-has-switch .tool-hint { top: 52px; }
 
 /* ---------- header without the tool bar */
 .lab .model-bar { flex: 1; min-width: 0; }
@@ -121,3 +121,24 @@ body.lab:not(.has-model) .lab-host, body.lab:not(.has-model) .lab-railnav { disp
 /* D: rail + split. The Edit group sits in the rail, so it drops the floating-panel look it gets from split */
 .lab-railnav .rail-edit .tb-group { background: none; box-shadow: none; backdrop-filter: none; border-radius: 0; }
 .lab-railnav .rail-edit .tb { width: 100%; }
+
+/* The right panel's show button sits in the top-right corner too: keep clear of it */
+body.lab-split.no-right .tb-group[data-group='present'], body.lab.no-right .lab-tr { right: 58px; }
+/* A long rail on a short window scrolls; show that it can */
+.lab-railnav { scrollbar-width: thin; }
+/* Phones use their own bottom bar (as with the classic layout), even if the window shrank after loading */
+@media (max-width: 700px) {
+  body.lab .lab-host, body.lab .lab-railnav { display: none !important; }
+}
+body.embed .lab-host, body.embed .lab-railnav { display: none !important; }
+/* Short windows (laptops): a tighter rail so all of it still fits without scrolling */
+@media (max-height: 820px) {
+  .lab-railnav { gap: 2px; padding: 4px 5px; }
+  .lab-railnav .rail-group { padding-bottom: 2px; }
+  .lab-railnav .rail-btn, .lab-railnav .rail-edit .tb { padding: 4px 2px; gap: 2px; font-size: 9.5px; }
+  .lab-railnav .rail-btn svg, .lab-railnav .rail-edit .tb > svg:not(.chev) { width: 16px; height: 16px; }
+}
+/* style.css drops tool bar captions below 1180px to save header room; the floating bars have room for them */
+@media (max-width: 1180px) {
+  .lab-host .tb > span, .lab-railnav .tb > span { display: inline; }
+}

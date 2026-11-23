@@ -1,10 +1,12 @@
-// Layout lab: experimental arrangements of the tool bar, picked with ?layout=dock | rail | split.
+// Tool bar layouts. D ("combo": labelled tool rail + tool column on the view's edge + camera dock) is the default
+// on screens wider than 900px. ?layout=classic | dock | rail | split | combo picks one explicitly and shows a
+// switcher (always shown in dev). Phones, narrow windows and embeds keep the classic header tool bar.
 // The real buttons are moved (not copied) wherever possible, so every click handler, active state and
-// disabled state keeps working. Without ?layout the page is unchanged.
+// disabled state keeps working.
 import './layoutlab.css';
 
 const VARIANTS: Record<string, string> = {
-  '': 'Current',
+  classic: 'Classic',
   dock: 'A · Bottom dock',
   rail: 'B · Dock + tool rail',
   split: 'C · Split edges',
@@ -24,11 +26,12 @@ export const labHome = new WeakMap<HTMLElement, HTMLElement>();
 
 export function initLayoutLab() {
   const params = new URLSearchParams(location.search);
-  const layout = params.get('layout') || '';
-  const dev = import.meta.env.DEV || params.has('layout');
-  if (!dev) return;
-  addSwitcher(layout);
-  if (!VARIANTS[layout] || !layout) return;
+  const requested = params.get('layout');
+  const embed = params.get('embed') === '1' || new URLSearchParams(location.hash.slice(1)).get('embed') === '1';
+  let layout = requested && VARIANTS[requested] ? requested : embed || innerWidth <= 900 ? 'classic' : 'combo';
+  if (embed) layout = 'classic';
+  if (import.meta.env.DEV || requested !== null) { addSwitcher(layout); document.body.classList.add('lab-has-switch'); }
+  if (layout === 'classic') return;
 
   document.body.classList.add('lab', `lab-${layout}`);
   if (layout === 'combo') document.body.classList.add('lab-split');
@@ -134,6 +137,6 @@ function addSwitcher(current: string) {
   const bar = document.createElement('div');
   bar.className = 'lab-switch';
   bar.innerHTML = '<b>Layout</b>' + Object.entries(VARIANTS).map(([k, v]) =>
-    `<a href="?${k ? 'layout=' + k : ''}" class="${k === current ? 'on' : ''}">${v}</a>`).join('');
+    `<a href="?layout=${k}" class="${k === current ? 'on' : ''}">${v}</a>`).join('');
   document.body.appendChild(bar);
 }
