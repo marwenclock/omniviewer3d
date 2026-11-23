@@ -345,7 +345,8 @@ body.has-model .welcome { display: none; }
 }
 .statusbar .grow { flex: 1; }
 #statusRight { font-family: var(--mono); font-size: 11px; }
-.status-brand a { text-decoration: none; color: var(--ink-2); letter-spacing: 0.08em; }
+.status-brand a { color: var(--ink-2); letter-spacing: 0.08em; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 2px; }
+.status-brand a:hover { text-decoration-color: currentColor; }
 
 /* ------------------------------------------------------------ modal, toasts, tooltip */
 .modal { border: 0; padding: 0; background: transparent; color: var(--ink); max-width: min(560px, calc(100vw - 32px)); width: 100%; }
