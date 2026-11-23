@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ctx } from '../context';
 import type { ViewName } from '../viewer';
 import { t } from '../i18n';
+import { icon } from '../icons';
 
 // A labelled view cube in the corner of the 3D view (CAD-style): it turns with the camera, and clicking a face
 // frames the model from that side. It replaces the canvas-drawn axis gizmo; it is plain DOM, so screenshots,
@@ -24,7 +25,7 @@ export function initViewCube() {
   wrap.setAttribute('role', 'group');
   wrap.setAttribute('aria-label', t('View cube'));
   wrap.innerHTML = `<div class="vc-cube">${FACES.map(([v, label, tf]) => `<button class="vc-face" data-vcview="${v}" style="transform:${tf}" aria-label="${t(label)} ${t('view')}">${t(label)}</button>`).join('')}</div>
-    <button class="vc-iso" data-vcview="iso" aria-label="${t('Isometric view')}" title="${t('Isometric view')} · ${t('Shift-click a face to turn without re-framing')}">ISO</button>`;
+    <button class="vc-iso" data-vcview="iso" aria-label="${t('Reset view')}" data-tip="${t('Reset view')} (1)">${icon('home')}</button>`;
   stage.appendChild(wrap);
   ctx.viewer.showAxisHelper = false;
   ctx.viewer.requestRender();

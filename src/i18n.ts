@@ -22,6 +22,7 @@ const ROWS: [string, string, string, string, string][] = [
   ['New empty scene', 'Nueva escena vacía', 'Neue leere Szene', 'Nouvelle scène vide', 'Nova cena vazia'],
   ['Fit to window', 'Ajustar a la ventana', 'An Fenster anpassen', 'Ajuster à la fenêtre', 'Ajustar à janela'],
   ['Camera views', 'Vistas de cámara', 'Kameraansichten', 'Vues caméra', 'Vistas da câmera'],
+  ['Reset view', 'Restablecer vista', 'Ansicht zurücksetzen', 'Réinitialiser la vue', 'Redefinir vista'],
   ['Display mode', 'Modo de visualización', 'Darstellung', "Mode d'affichage", 'Modo de exibição'],
   ['Measure', 'Medir', 'Messen', 'Mesurer', 'Medir'],
   ['Paint', 'Pintar', 'Malen', 'Peindre', 'Pintar'],

@@ -1231,7 +1231,7 @@ body:not(.qc-open) .qc-preview, .qc-preview[hidden] { display: none; }
 }
 
 /* View cube (replaces the canvas axis gizmo): flat faces, turns with the camera, click a face to frame that side. */
-.viewcube { --vc: 62px; --vc-h: 31px; position: absolute; right: 18px; bottom: 18px; width: var(--vc); height: calc(var(--vc) + 22px); z-index: 3; perspective: none; }
+.viewcube { --vc: 62px; --vc-h: 31px; position: absolute; right: 18px; bottom: 18px; width: var(--vc); height: var(--vc); z-index: 3; perspective: none; }
 body:not(.has-model) .viewcube { display: none; }
 .vc-cube { position: relative; width: var(--vc); height: var(--vc); transform-style: preserve-3d; }
 .vc-face {
@@ -1240,9 +1240,17 @@ body:not(.has-model) .viewcube { display: none; }
   text-transform: uppercase; padding: 0;
 }
 .vc-face:hover { background: var(--surface-3); color: var(--ink); }
-.vc-iso { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); font: 600 9.5px var(--font); color: var(--muted); padding: 2px 6px; border-radius: 4px; letter-spacing: 0.06em; }
-.vc-iso:hover { color: var(--ink); background: var(--surface-2); }
-@media (max-width: 700px) { .viewcube { --vc: 48px; --vc-h: 24px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } }
+/* Reset view: a round glass button beside the cube (it used to be bare "ISO" text over the cube's corner). */
+.vc-iso {
+  position: absolute; right: calc(100% + 10px); top: calc(var(--vc) / 2); transform: translateY(-50%);
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+  border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); color: var(--ink); transition: background 0.15s;
+}
+.vc-iso:hover { background: var(--surface-2); }
+.vc-iso:active { transform: translateY(-50%) scale(0.94); }
+.vc-iso .icon { width: 18px; height: 18px; }
+@media (max-width: 700px) { .viewcube { --vc: 48px; --vc-h: 24px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } .vc-iso { width: 40px; height: 40px; } }
 .status-kbd { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; margin-right: 12px; }
 .status-kbd:hover { color: var(--ink); }
 .status-kbd kbd { margin: 0; }
