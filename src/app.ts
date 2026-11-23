@@ -56,7 +56,7 @@ const prefs = {
 };
 
 /** Short messages. Errors also go to the Problems panel, where they stay until dismissed (OV-050). */
-function toast(msg: string, error = false) {
+function toast(msg: string, error = false, action?: { label: string; run: () => void }) {
   const el = document.createElement('div');
   el.className = 'toast' + (error ? ' error' : '');
   el.setAttribute('role', error ? 'alert' : 'status');
@@ -68,12 +68,18 @@ function toast(msg: string, error = false) {
     b.onclick = () => showProblems();
     el.append(' ', b);
   }
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'link-btn'; b.textContent = t(action.label);
+    b.onclick = () => { el.remove(); action.run(); };
+    el.append(' ', b);
+  }
   // One message at a time: a new one replaces the last instead of stacking over the model (D06).
   // The latest result also stays in the status line, so it can still be read after the toast fades.
   $('#toasts').querySelectorAll('.toast:not(.error)').forEach((x) => x.remove());
   $('#toasts').appendChild(el);
   if (!error) { const last = document.getElementById('statusLast'); if (last) last.textContent = t(msg); }
-  setTimeout(() => el.remove(), error ? 9000 : 2600);
+  setTimeout(() => el.remove(), error ? 9000 : action ? 6000 : 2600);
 }
 
 // ------------------------------------------------------------------ problems panel (OV-050)
@@ -558,7 +564,7 @@ function setTool(t: Tool) {
   if (t === 'paint' || t === 'measure') editor.setGizmo('none');
   const hints: Record<string, string> = {
     none: '',
-    measure: isTouch() ? 'Tap two points to measure · snaps to corners' : 'Click two points to measure · snaps to corners · Esc to stop',
+    measure: isTouch() ? 'Tap a hole or edge, or two points for a distance' : 'Point at a hole or edge, or click a corner or face to start a distance · Esc to stop',
     paint: paint.mode === 'brush' ? (isTouch() ? 'Drag a finger to brush colour onto the surface' : 'Click and drag to brush colour onto the surface · Esc to stop') : (isTouch() ? 'Tap a part to colour it' : 'Click a part to colour it · Esc to stop'),
     section: 'Drag the slider in the details panel to cut through the model',
     explode: 'Use the slider in the details panel to pull parts apart',
@@ -1213,6 +1219,16 @@ window.addEventListener('keydown', (e) => {
     case 'h': if (editor.selection.length) editor.setVisibility(editor.selection, (o) => !o.visible, 'Hide / show'); renderTree(); break;
     case 'delete': case 'backspace': editor.deleteSelection(); break;
     case 'escape':
+      // Measuring: Esc first drops a half-placed distance, then clears every measurement (with undo in the
+      // message), and only then leaves the tool.
+      if ((state.tool === 'measure' || state.tool === 'none') && measure.cancelPoint()) break;
+      if ((state.tool === 'measure' || state.tool === 'none') && measure.list.length) {
+        const saved = measure.serialize();
+        const n = saved.length;
+        measure.clear();
+        toast(n === 1 ? 'Cleared 1 measurement' : `Cleared ${n} measurements`, false, { label: 'Undo', run: () => measure.restore(saved) });
+        break;
+      }
       if (state.tool !== 'none') setTool('none');
       else if (editor.gizmo !== 'none') editor.setGizmo('none');
       else selectObject(null);
@@ -1301,7 +1317,8 @@ function measureStepHint() {
   if (state.tool !== 'measure') return;
   const tap = isTouch() ? 'Tap' : 'Click';
   const n = measure.pendingCount;
-  const stop = `${isTouch() ? 'Done' : 'Esc'} to stop`;
+  // Says what Esc does right now: drop the half-placed point, clear the measurements, or leave the tool.
+  const stop = isTouch() ? 'Done to stop' : n ? 'Esc cancels this point' : measure.list.length ? 'Esc clears all' : 'Esc to stop';
   const h = measure.hoverTarget;
   const over = h?.kind === 'circle' ? (h.showRadius ? `${tap} to keep this radius` : `${tap} to keep this diameter`) : h?.kind === 'edge' ? `${tap} to keep this edge length` : '';
   let text: string;

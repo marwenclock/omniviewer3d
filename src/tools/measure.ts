@@ -553,6 +553,14 @@ export class MeasureTool {
     return this.list.map((m) => ({ name: m.name, type: m.kind, what: m.info, value: m.kind === 'circle' && m.showRadius ? `R ${formatUnit(m.radius!)}` : formatUnit(m.distance), current: !m.stale, from: m.a.toArray(), to: m.b.toArray(), center: m.center?.toArray(), angleBetweenFaces: m.angle }));
   }
 
+  /** Drops a half-placed distance or circle; true when there was one. */
+  cancelPoint() {
+    if (!this.pendingCount) return false;
+    this.cancelPending();
+    this.emit();
+    return true;
+  }
+
   get pendingCount() { return this.mode === 'circle' ? this.circlePts.length : this.pending ? 1 : 0; }
 
   private cancelPending() {
