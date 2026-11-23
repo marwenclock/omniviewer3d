@@ -1340,3 +1340,43 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
 .seg.seg-4 button { flex: 1; padding: 5px 4px; }
 .measure-label.measure-preview { background: #3ddc97; color: #06140d; border-color: #3ddc97; font-weight: 600; pointer-events: none; }
 .mi-sub.mi-what { color: var(--ink-2); }
+
+/* ------------------------------------------------------------ phones: floating rounded controls
+   Same language as the desktop dock: a glass pill for the main buttons that floats over an edge-to-edge 3D view,
+   round view buttons on the right edge, and sheets that float above the pill as rounded cards. */
+.mview { display: none; }
+@media (max-width: 700px) {
+  :root { --bar: calc(78px + env(safe-area-inset-bottom)); }
+  .layout { bottom: 0; }
+  .mobilebar {
+    left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom));
+    height: 62px; padding: 5px; gap: 2px; border: 1px solid var(--line-2); border-radius: 20px;
+    background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(16px); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  }
+  .mobilebar button { border-radius: 14px; font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em; text-transform: none; gap: 4px; padding: 0; }
+  .mobilebar button.on, .mobilebar button.active { background: var(--ink); color: var(--bg); }
+  /* the view uses the whole screen; with a sheet open it stops at the sheet */
+  .viewport { bottom: 0; }
+  body.has-model:not(.no-left) .viewport, body.has-model:not(.no-right) .viewport { bottom: calc(var(--bar) + var(--sheet-h, 0px)); }
+  .side, .side.left, .side.right {
+    position: fixed; top: auto; left: 8px; right: 8px; bottom: var(--bar);
+    border: 1px solid var(--line-2); border-radius: 18px; overflow: hidden;
+  }
+  .ctx-bar { bottom: calc(var(--bar) + var(--sheet-h, 0px) + 8px); }
+  .viewcube { bottom: calc(var(--bar) + var(--sheet-h, 0px) + 6px); }
+  .tips { bottom: calc(var(--bar) + 8px); }
+  /* round view buttons on the right edge */
+  .fab-fit { display: none !important; }
+  .mview {
+    display: flex; flex-direction: column; gap: 2px; position: absolute; right: 10px; top: 10px; z-index: 6; padding: 4px;
+    border: 1px solid var(--line-2); border-radius: 22px; background: color-mix(in srgb, var(--panel) 86%, transparent);
+    backdrop-filter: blur(16px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  }
+  .mview button { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink); }
+  .mview button:active { background: var(--surface-2); }
+  .mview .icon, .mview i[data-icon] { width: 19px; height: 19px; }
+  body:not(.has-model) .mview { display: none; }
+  .tool-hint { left: 12px; right: 64px; }
+  /* header buttons as round icon buttons */
+  .top-right .tb { border-radius: 50%; }
+}

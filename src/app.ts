@@ -651,6 +651,11 @@ document.addEventListener('click', (e) => {
       const below = r.bottom + 6 + h <= window.innerHeight - 8;
       menu.style.top = (side ? Math.max(8, Math.min(r.top, window.innerHeight - h - 8)) : below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
       menu.style.left = (side ? r.right + 8 : Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+      // The phone's view buttons sit on the right edge: open beside them, to the left.
+      if (menuBtn.closest('.mview')) {
+        menu.style.left = Math.max(8, r.left - menu.offsetWidth - 8) + 'px';
+        menu.style.top = Math.max(8, Math.min(r.top, window.innerHeight - h - 8)) + 'px';
+      }
     }
     return;
   }
@@ -2894,6 +2899,9 @@ registerMainContextActions();
 
 if (window.innerWidth < 900) document.body.classList.add('no-left', 'no-right');
 applyStaticI18n();
+// Menus live on <body>: the phone's floating view buttons open them while the header tool bar is hidden, and
+// glass panels (backdrop-filter) would otherwise trap their fixed position.
+$$<HTMLElement>('#toolbar .menu').forEach((m) => document.body.appendChild(m));
 initLayoutLab();
 setWorkspace('all'); // workspace filtering removed: every tool is always available
 applyPagePrimary();
