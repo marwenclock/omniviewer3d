@@ -3485,7 +3485,7 @@ window.addEventListener('paste', (e) => {
 // ------------------------------------------------------------------ first-visit tips
 /** One short, device-aware tip the first time each tool is used (OV-049). Replayable from Help. */
 const TOOL_TIPS: Record<string, [string, string]> = {
-  measure: ['Click the first point, then the second. Corners and edges snap; the snap type shows next to the cursor.', 'Tap the first point, then the second. Drag with one finger to orbit between taps.'],
+  measure: ['Point at a hole or round edge to see its diameter, or at an edge for its length, then click to keep it. Click a corner or face to measure a distance.', 'Tap a hole or an edge to measure it, or tap two points for a distance. Drag with one finger to orbit between taps.'],
   paint: ['Brush with the left mouse button; hold Alt (or use the right button) to orbit while painting.', 'Paint with one finger; use two fingers to orbit and zoom.'],
   section: ['Drag the slider in Details to move the cut. A badge on the view reminds you while it is on.', 'Move the slider in Details to cut through the model.'],
   repair: ['Red lines are open edges. The checks cover the mesh only, not printability.', 'Red lines are open edges. The checks cover the mesh only.'],
