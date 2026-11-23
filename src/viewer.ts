@@ -134,21 +134,14 @@ export class Viewer {
     this.setBackground(this.background);
     this.updateGrid(new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1)));
     this.renderer.setAnimationLoop(() => this.frame());
-    this.warmUp();
+    // Frames resume (and the first shaders compile) once the welcome screen stops covering the viewport.
+    new MutationObserver(() => { if (!this.covered) this.requestRender(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   }
 
-  /** true until the start-up shaders are compiled: no frame is drawn meanwhile, so the page never waits on a shader. */
-  private warming = true;
-  /** Compiles the empty scene's shaders in the background (KHR_parallel_shader_compile) before the first frame.
-   *  On GPU-less machines (Lighthouse lab, software WebGL) a synchronous first draw blocked the page for ~1 s (TBT).
-   *  A timeout makes sure the viewer never stays blank if the driver never reports the programs as ready. */
-  private warmUp() {
-    const start = () => { if (!this.warming) return; this.warming = false; this.requestRender(); };
-    try {
-      Promise.all([this.renderer.compileAsync(this.scene, this.camera), this.renderer.compileAsync(this.viewHelper, this.camera)]).then(start, start);
-    } catch { start(); }
-    setTimeout(start, 2500);
-  }
+  private welcomeEl = document.getElementById('welcome');
+  /** true while the opaque welcome screen hides the viewport (no model open): nothing is drawn then.
+   *  On GPU-less machines (Lighthouse lab, software WebGL) compiling shaders for a frame nobody sees blocked the page for 1–2 s (TBT). */
+  private get covered() { return !!this.welcomeEl && !document.body.classList.contains('has-model'); }
 
   private makeViewHelper() {
     const vh = new ViewHelper(this.camera, this.renderer.domElement);
@@ -201,7 +194,7 @@ export class Viewer {
     this.updateOrtho();
     this.requestRender?.();
     // Resizing clears the canvas; draw straight away instead of waiting for a (possibly throttled) animation frame.
-    if (drawNow && !this.warming && this.scene && this.camera && !this.contextLost && !this.hold && !this.recording) this.draw();
+    if (drawNow && !this.covered && this.scene && this.camera && !this.contextLost && !this.hold && !this.recording) this.draw();
   }
 
   /** One frame of the scene, gizmo and labels. */
@@ -229,7 +222,7 @@ export class Viewer {
   private frame() {
     this.timer.update();
     const dt = Math.min(this.timer.getDelta(), 0.1);
-    if (this.contextLost || this.hold || this.warming) return;
+    if (this.contextLost || this.hold || this.covered) return;
     const now = performance.now();
     const animating = this.viewHelper.animating || !!(this.activeAction && !this.activeAction.paused && this.activeAction.isRunning()) || this.controls.autoRotate || this.continuous.size > 0;
     if (!animating && now > this.renderUntil && this.pendingFrames <= 0) return; // idle: nothing changed, keep the GPU quiet
