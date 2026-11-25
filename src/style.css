@@ -1520,3 +1520,26 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
   .side-tabs { padding: 0 12px 8px; }
   .side-tabs .side-tab { padding: 8px 14px; font-size: 13px; }
 }
+
+/* A block of the side panel that just changed after a click elsewhere glows briefly. */
+:root { --glow: 255, 255, 255; }
+:root[data-theme='light'] { --glow: 0, 0, 0; }
+.upd-glow { animation: upd-glow 1.6s ease-out backwards; }
+@keyframes upd-glow {
+  0%, 25% { box-shadow: 0 0 0 1px rgba(var(--glow), 0.5); }
+  100% { box-shadow: 0 0 0 1px rgba(var(--glow), 0); }
+}
+/* most of the panel changed: its own border glows once, like the editor inspector in OMNICLIP */
+#rightPanel::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; opacity: 0;
+  border: 1px solid rgba(var(--glow), 0.6); box-shadow: 0 0 0 2px rgba(var(--glow), 0.08), 0 0 26px rgba(var(--glow), 0.14); }
+#rightPanel.panel-glow::after { animation: panel-glow 1.6s ease-out; }
+@keyframes panel-glow { 0%, 20% { opacity: 1; } 100% { opacity: 0; } }
+/* a fading glow is not motion: keep it when reduced motion is asked for */
+@media (prefers-reduced-motion: reduce) { .upd-glow, #rightPanel.panel-glow::after { animation-duration: 1.6s !important; } }
+/* the face, edge or hole picked first when measuring */
+.measure-sel { border: 1px solid rgba(90, 169, 255, 0.55); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; background: rgba(90, 169, 255, 0.06); }
+.measure-sel .ms-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.measure-sel .ms-title { font-size: 12px; font-weight: 600; color: var(--hi); }
+.measure-sel .ms-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--muted); padding: 1px 0; }
+.measure-sel .ms-row b { font-family: var(--mono); font-weight: 500; color: var(--hi); }
+.measure-sel .ms-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }

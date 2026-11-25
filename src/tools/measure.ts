@@ -5,6 +5,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { Viewer } from '../viewer';
 import { MeshFeatures, nearby, edgeChain, cylinderAt, type Circle, type Cylinder, type EdgeChain } from './features';
+import { planeAt, triPositions, entFacts, measurePair, type Ent, type Fact } from './entities';
 
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
@@ -40,6 +41,10 @@ export interface Measurement {
   info?: string;
   /** show R instead of ⌀ (fillets and partial arcs) */
   showRadius?: boolean;
+  /** face/edge measurements: every value found between the two picked entities */
+  facts?: Fact[];
+  /** what the label shows: the distance, or the angle when the two entities touch */
+  headline?: 'distance' | 'angle';
 }
 
 export type SnapKind = 'corner' | 'midpoint' | 'edge' | 'hole centre' | 'face centre' | 'surface';
@@ -51,8 +56,8 @@ export type SnapMode = 'auto' | 'corner' | 'edge' | 'centre' | 'off';
  * diameter: holes, bosses, round edges and fillets only.  edge: model edges only.
  * circle: the manual fallback, three points on a circle.
  */
-export type MeasureMode = 'smart' | 'distance' | 'diameter' | 'edge' | 'circle';
-export interface SavedMeasurement { name: string; kind: 'distance' | 'circle'; a: number[]; b: number[]; c?: number[]; na?: number[] | null; nb?: number[] | null; color: string; hidden: boolean; stale: boolean; info?: string; showRadius?: boolean }
+export type MeasureMode = 'select' | 'smart' | 'distance' | 'diameter' | 'edge' | 'circle';
+export interface SavedMeasurement { name: string; kind: 'distance' | 'circle'; a: number[]; b: number[]; c?: number[]; na?: number[] | null; nb?: number[] | null; color: string; hidden: boolean; stale: boolean; info?: string; showRadius?: boolean; facts?: Fact[]; headline?: 'distance' | 'angle'; angle?: number | null }
 
 type PointTarget = { kind: 'point'; p: THREE.Vector3; n: THREE.Vector3 | null; snap: SnapKind };
 type CircleTarget = { kind: 'circle'; circle: Circle; info: string; showRadius: boolean; label: string; highlight: THREE.Vector3[]; key: string };
@@ -60,6 +65,8 @@ type EdgeTarget = { kind: 'edge'; a: THREE.Vector3; b: THREE.Vector3; length: nu
 type Target = PointTarget | CircleTarget | EdgeTarget;
 
 const FEATURE_COLOR = 0x3ddc97;
+const SELECT_COLOR = 0x5aa9ff;
+export type { Ent, Fact };
 
 /** Distances, diameters and edge lengths, with snapping to the model's real corners, edges and hole centres. */
 export class MeasureTool {
@@ -74,7 +81,19 @@ export class MeasureTool {
   pickTargets: () => THREE.Object3D[] | undefined = () => undefined;
   private snapLabel: CSS2DObject | null = null;
   private lastPointer: 'mouse' | 'touch' | 'pen' = 'mouse';
-  mode: MeasureMode = 'smart';
+  /**
+   * select (default): pick faces, edges, holes and corners like a CAD program; two picks measure between them.
+   * The point modes are a setting.
+   */
+  mode: MeasureMode = 'select';
+  /** first entity picked in select mode, waiting for the second */
+  selected: Ent | null = null;
+  /** entity under the cursor in select mode */
+  hoverEnt: Ent | null = null;
+  private hoverEntObj: THREE.Object3D | null = null;
+  private selObj: THREE.Object3D | null = null;
+  private lineMats = new Set<LineMaterial>();
+  private planeCache: { mesh: THREE.Mesh; tris: Set<number>; ent: Ent } | null = null;
   private circlePts: { p: THREE.Vector3; marker: THREE.Object3D }[] = [];
   list: Measurement[] = [];
   private pending: { p: THREE.Vector3; n: THREE.Vector3 | null; marker: THREE.Object3D; kind?: SnapKind } | null = null;
@@ -129,7 +148,9 @@ export class MeasureTool {
       };
       this.markers.forEach(fit);
       if (this.hover.visible) fit(this.hover);
-      if (this.preview.visible) { const r = viewer.renderer.domElement; (this.previewLine.material as LineMaterial).resolution.set(r.clientWidth, r.clientHeight); }
+      const r = viewer.renderer.domElement;
+      if (this.preview.visible) (this.previewLine.material as LineMaterial).resolution.set(r.clientWidth, r.clientHeight);
+      this.lineMats.forEach((m) => m.resolution.set(r.clientWidth, r.clientHeight));
     });
   }
 
@@ -140,6 +161,7 @@ export class MeasureTool {
     this.active = on;
     this.hover.visible = false;
     this.hidePreview();
+    this.setHoverEnt(null);
     if (!on) this.cancelPending();
     this.emit();
   }
@@ -148,6 +170,7 @@ export class MeasureTool {
     this.cancelPending();
     this.mode = mode;
     this.hidePreview();
+    this.setHoverEnt(null);
     this.emit();
   }
 
@@ -186,7 +209,7 @@ export class MeasureTool {
     return c;
   }
   /** Forget cached features (call after geometry edits). */
-  resetCaches() { this.cylCache = null; this.noCyl.clear(); this.chainCache.clear(); }
+  resetCaches() { this.cylCache = null; this.noCyl.clear(); this.chainCache.clear(); this.planeCache = null; }
 
   /** The end of a cylinder wall nearest the camera: where a hole opens. */
   private openEnd(c: Cylinder) {
@@ -328,6 +351,147 @@ export class MeasureTool {
     return { kind: 'point', p, n, snap: kind };
   }
 
+  // ---------------------------------------------------------------- select mode: faces, edges, holes, corners
+
+  /** The whole entity under the cursor: a corner or edge when close to one, else the face (flat, round or curved). */
+  private analyzeEnt(event: PointerEvent): Ent | null {
+    this.lastPointer = (event.pointerType as any) || 'mouse';
+    const hit = this.viewer.pick(event, this.pickTargets());
+    if (!hit) return null;
+    const obj = hit.object as THREE.Mesh;
+    const n = hit.face ? hit.face.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(obj.matrixWorld)).normalize() : null;
+    const F = hit.faceIndex != null ? MeshFeatures.of(obj) : null;
+    if (!F) return { t: 'surface', p: hit.point.clone(), n, key: `pt:${hit.point.toArray()}` };
+    const t = hit.faceIndex!;
+    const radius = this.lastPointer === 'touch' ? Math.max(this.snapRadius, 26) : this.snapRadius;
+    const { toScreen, cursor } = this.screenOf(event);
+    const cam = this.viewer.camera;
+    const h = this.viewer.renderer.domElement.clientHeight || 1;
+    const perPx = cam instanceof THREE.OrthographicCamera ? (cam.top - cam.bottom) / cam.zoom / h
+      : (2 * hit.point.distanceTo(cam.position) * Math.tan(THREE.MathUtils.degToRad((cam as THREE.PerspectiveCamera).fov) / 2)) / h;
+    const rect = this.viewer.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1), cam);
+    // Corners and edges need the cursor close; the rest of the face picks the face.
+    const near = nearby(F, hit.point, perPx * radius * 1.6, ray.ray, cursor, toScreen, radius * 0.6, radius * 0.7);
+    if (near.corner) return { t: 'vertex', p: near.corner.point, key: `v:${F.mesh.uuid}:${near.corner.v}` };
+    if (near.edge) {
+      const ch = this.chain(F, near.edge.e);
+      if (ch.kind === 'arc' && ch.circle) {
+        const c = this.circleFromChain(F, near.edge.e, ch, false);
+        const full = !c.showRadius;
+        return { t: 'circle', circle: c.circle, pts: full ? ring(c.circle) : ch.pts, full, length: full ? 2 * Math.PI * c.circle.radius : ch.length, info: c.info, key: c.key, src: c };
+      }
+      const a = ch.pts[0], b = ch.pts[ch.pts.length - 1];
+      return { t: 'line', a: a.clone(), b: b.clone(), key: `e:${F.mesh.uuid}:${a.toArray()}:${b.toArray()}` };
+    }
+    if (this.planeCache && this.planeCache.mesh === obj && this.planeCache.tris.has(t)) return this.planeCache.ent;
+    const pl = planeAt(F, t);
+    if (pl) {
+      const ent: Ent = { t: 'plane', p: pl.p, n: pl.n, area: pl.area, tri: triPositions(F, pl.tris), key: `f:${obj.uuid}:${pl.tris[0]}:${pl.tris.length}` };
+      this.planeCache = { mesh: obj, tris: new Set(pl.tris), ent };
+      return ent;
+    }
+    const cyl = this.cylinder(F, t);
+    if (cyl) {
+      const ent: Ent = { t: 'cyl', cyl, tri: triPositions(F, cyl.tris), key: `c:${obj.uuid}:${cyl.radius}:${cyl.tris.size}` };
+      this.planeCache = { mesh: obj, tris: cyl.tris, ent };
+      return ent;
+    }
+    return { t: 'surface', p: hit.point.clone(), n, key: `pt:${hit.point.toArray()}` };
+  }
+
+  /** Draws an entity: a tinted face, a thick edge line, or a dot. */
+  private drawEnt(e: Ent, color: number, strong: boolean) {
+    const g = new THREE.Group();
+    g.userData.helper = true;
+    g.userData.noShot = true;
+    const line = (pts: THREE.Vector3[]) => {
+      const geo = new LineGeometry();
+      geo.setPositions(pts.flatMap((p) => [p.x, p.y, p.z]));
+      const mat = new LineMaterial({ color, linewidth: strong ? 4 : 3, depthTest: false, transparent: true });
+      const r = this.viewer.renderer.domElement;
+      mat.resolution.set(r.clientWidth, r.clientHeight);
+      this.lineMats.add(mat);
+      const l = new Line2(geo, mat);
+      l.computeLineDistances();
+      l.renderOrder = 999; l.frustumCulled = false; l.raycast = () => {};
+      g.add(l);
+    };
+    if (e.t === 'plane' || e.t === 'cyl') {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(e.tri, 3));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: strong ? 0.42 : 0.3, depthWrite: false, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      }));
+      mesh.renderOrder = 997; mesh.raycast = () => {}; mesh.frustumCulled = false;
+      g.add(mesh);
+      if (e.t === 'cyl') { line(ring({ center: e.cyl.start, axis: e.cyl.axis, radius: e.cyl.radius })); line(ring({ center: e.cyl.end, axis: e.cyl.axis, radius: e.cyl.radius })); }
+    } else if (e.t === 'line') line([e.a, e.b]);
+    else if (e.t === 'circle') line(e.pts);
+    else { const m = this.makeMarker(color); m.position.copy(e.p); this.markers.add(m); g.add(m); }
+    this.viewer.overlay.add(g);
+    return g;
+  }
+
+  private disposeObj(o: THREE.Object3D | null) {
+    if (!o) return;
+    this.viewer.overlay.remove(o);
+    o.traverse((c: any) => {
+      this.markers.delete(c);
+      c.geometry?.dispose?.();
+      if (c.material) { this.lineMats.delete(c.material); c.material.dispose?.(); }
+    });
+  }
+
+  private setHoverEnt(e: Ent | null) {
+    const same = (e?.key ?? '') === (this.hoverEnt?.key ?? '') && !!this.hoverEntObj === !!e;
+    this.hoverEnt = e;
+    if (same) return;
+    this.disposeObj(this.hoverEntObj);
+    this.hoverEntObj = null;
+    // The picked entity already shows in the selection colour.
+    if (e && e.key !== this.selected?.key) this.hoverEntObj = this.drawEnt(e, FEATURE_COLOR, false);
+    this.viewer.requestRender();
+  }
+
+  private setSelected(e: Ent | null) {
+    this.selected = e;
+    this.disposeObj(this.selObj);
+    this.selObj = e ? this.drawEnt(e, SELECT_COLOR, true) : null;
+    if (e && this.hoverEnt?.key === e.key) { this.disposeObj(this.hoverEntObj); this.hoverEntObj = null; }
+    this.viewer.requestRender();
+  }
+
+  /** First pick selects; a second, different pick measures between the two; the same pick again keeps its size. */
+  private clickEnt(e: Ent | null) {
+    if (!e) { if (this.selected) { this.setSelected(null); this.emit(); } return; }
+    if (!this.selected) { this.setSelected(e); this.emit(); return; }
+    if (e.key === this.selected.key) { this.keepSelected(); return; }
+    const r = measurePair(this.selected, e, this.format);
+    this.setSelected(null);
+    this.disposeObj(this.hoverEntObj); this.hoverEntObj = null; this.hoverEnt = null;
+    const marker = this.makeMarker(0xffffff);
+    this.viewer.overlay.add(marker);
+    this.markers.add(marker);
+    this.finish({ p: r.a, n: null, marker }, { p: r.b, n: null }, { info: r.info, facts: r.facts, headline: r.headline, angle: r.angle });
+  }
+
+  /** Keeps the size of the single picked edge, hole or round edge as a measurement. */
+  keepSelected() {
+    const e = this.selected;
+    if (!e) return;
+    this.setSelected(null);
+    if (e.t === 'line') this.addEdge({ kind: 'edge', a: e.a, b: e.b, length: e.a.distanceTo(e.b), label: '', key: e.key });
+    else if (e.t === 'circle') this.addDetectedCircle(e.src as CircleTarget);
+    else if (e.t === 'cyl') this.addDetectedCircle(this.circleFromCylinder(e.cyl));
+    else this.emit();
+  }
+
+  /** What the panel shows for the picked entity. */
+  get selectionInfo() { return this.selected ? entFacts(this.selected) : null; }
+
   // ---------------------------------------------------------------- preview
 
   private hidePreview() {
@@ -356,6 +520,13 @@ export class MeasureTool {
 
   onPointerMove(event: PointerEvent) {
     if (!this.active) return;
+    if (this.mode === 'select') {
+      const ent = this.analyzeEnt(event);
+      const prev = this.hoverEnt;
+      this.setHoverEnt(ent);
+      if (prev?.t !== ent?.t) this.emit();
+      return;
+    }
     let target: Target | null;
     if (this.mode === 'circle') { const hit = this.viewer.pick(event, this.pickTargets()); target = hit ? this.legacyPoint(event, hit, null) : null; }
     else target = this.analyze(event);
@@ -382,6 +553,7 @@ export class MeasureTool {
   /** Returns true when the click was consumed. */
   onClick(event: PointerEvent): boolean {
     if (!this.active) return false;
+    if (this.mode === 'select') { this.clickEnt(this.analyzeEnt(event)); return true; }
     if (this.mode === 'circle') {
       const hit = this.viewer.pick(event, this.pickTargets());
       const h = hit && this.legacyPoint(event, hit, null);
@@ -532,13 +704,14 @@ export class MeasureTool {
   refresh(id: number) { const m = this.list.find((x) => x.id === id); if (m) { m.stale = false; this.style(m); this.emit(); } }
 
   serialize(): SavedMeasurement[] {
-    return this.list.map((m) => ({ name: m.name, kind: m.kind, a: m.a.toArray(), b: m.b.toArray(), c: m.kind === 'circle' ? (m.group.userData.b2 as number[]) : undefined, na: m.na?.toArray() ?? null, nb: m.nb?.toArray() ?? null, color: m.color, hidden: m.hidden, stale: m.stale, info: m.info, showRadius: m.showRadius }));
+    return this.list.map((m) => ({ name: m.name, kind: m.kind, a: m.a.toArray(), b: m.b.toArray(), c: m.kind === 'circle' ? (m.group.userData.b2 as number[]) : undefined, na: m.na?.toArray() ?? null, nb: m.nb?.toArray() ?? null, color: m.color, hidden: m.hidden, stale: m.stale, info: m.info, showRadius: m.showRadius, facts: m.facts, headline: m.headline, angle: m.facts ? m.angle : undefined }));
   }
   restore(list: SavedMeasurement[]) {
     this.clear();
     const V = (a?: number[] | null) => (a ? new THREE.Vector3().fromArray(a) : null);
     for (const s of list) {
       const preset: Partial<Measurement> = { name: s.name, color: s.color, hidden: s.hidden, stale: s.stale, info: s.info, showRadius: s.showRadius };
+      if (s.facts) Object.assign(preset, { facts: s.facts, headline: s.headline, angle: s.angle ?? null });
       if (s.kind === 'circle' && s.c) {
         this.circlePreset = preset;
         for (const p of [s.a, s.c, s.b]) this.addCirclePoint(V(p)!);
@@ -550,7 +723,7 @@ export class MeasureTool {
   }
   /** JSON for download (OV-102). */
   toJSON(formatUnit: (v: number) => string) {
-    return this.list.map((m) => ({ name: m.name, type: m.kind, what: m.info, value: m.kind === 'circle' && m.showRadius ? `R ${formatUnit(m.radius!)}` : formatUnit(m.distance), current: !m.stale, from: m.a.toArray(), to: m.b.toArray(), center: m.center?.toArray(), angleBetweenFaces: m.angle }));
+    return this.list.map((m) => ({ name: m.name, type: m.kind, what: m.info, value: m.kind === 'circle' && m.showRadius ? `R ${formatUnit(m.radius!)}` : formatUnit(m.distance), current: !m.stale, from: m.a.toArray(), to: m.b.toArray(), center: m.center?.toArray(), angleBetweenFaces: m.angle, values: m.facts?.map((f) => ({ label: f.label, value: f.u === 'text' ? f.s : f.u === 'len' ? formatUnit(f.v) : f.u === 'deg' ? `${f.v.toFixed(2)}°` : f.v })) }));
   }
 
   /** Drops a half-placed distance or circle; true when there was one. */
@@ -561,9 +734,10 @@ export class MeasureTool {
     return true;
   }
 
-  get pendingCount() { return this.mode === 'circle' ? this.circlePts.length : this.pending ? 1 : 0; }
+  get pendingCount() { return this.mode === 'select' ? (this.selected ? 1 : 0) : this.mode === 'circle' ? this.circlePts.length : this.pending ? 1 : 0; }
 
   private cancelPending() {
+    this.setSelected(null);
     for (const c of this.circlePts) { this.viewer.overlay.remove(c.marker); this.markers.delete(c.marker); }
     this.circlePts = [];
     if (!this.pending) return;
@@ -599,6 +773,7 @@ export class MeasureTool {
 
 /** The headline value of a measurement: ⌀ or R for circles, the length otherwise. */
 export function valueText(m: Measurement, fmt: (v: number) => string) {
+  if (m.headline === 'angle' && m.angle !== null) return `∠ ${m.angle.toFixed(2)}°`;
   if (m.kind !== 'circle') return fmt(m.distance);
   return m.showRadius ? `R ${fmt(m.radius!)}` : `⌀ ${fmt(m.distance)}`;
 }

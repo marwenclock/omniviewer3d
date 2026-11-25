@@ -8,7 +8,7 @@ import { t, LANG, LANG_PREFIX, applyStaticI18n } from './i18n';
 const tr = (s: string) => (s ? t(s) : '');
 import { History } from './history';
 import { Editor, type Primitive, type GizmoMode } from './editor';
-import { MeasureTool, valueText, type MeasureMode } from './tools/measure';
+import { MeasureTool, valueText, type MeasureMode, type Fact } from './tools/measure';
 import { PaintTool } from './tools/paint';
 import { computeStats, checkClosedAsync, UNITS, type Unit, fmtLen, fmtNum, fmtInt, type ModelStats } from './stats';
 import { EXPORT_FORMATS, exportModel, exportObject, download, describeExport, exportBlocker, staysYUp, safeFileName, isUnitless, isPrintFormat, outputUnit, formatById, hasSplat, type ExportId, type ExportScope, type UnitId } from './exporters';
@@ -225,6 +225,9 @@ const fmtD = (v: number, digits = 3) => fmtLen(toDisp(v), dispUnit(), digits);
 const fmtArea = (v: number) => `${fmtNum(v * toDisp(1) ** 2, 2)} ${UNITS[dispUnit()].short}²`;
 const fmtVol = (v: number) => `${fmtNum(v * toDisp(1) ** 3, 2)} ${UNITS[dispUnit()].short}³`;
 measure.format = (v) => fmtD(v);
+// Faces & edges is the default; two-point picking is a setting the user turns on (and it is remembered).
+measure.mode = store.get('measureMode', 'select') === 'distance' ? 'distance' : 'select';
+const fmtFact = (f: Fact) => (f.u === 'text' ? esc(f.s) : f.u === 'len' ? fmtD(f.v) : f.u === 'area' ? fmtArea(f.v) : `${fmtNum(f.v, 2)}°`);
 let measureOnlySelected = false;
 measure.pickTargets = () => (measureOnlySelected && editor.selected && editor.selected !== viewer.model ? [editor.selected] : undefined);
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
@@ -591,6 +594,7 @@ function setTool(t: Tool) {
   hint.classList.remove('fade');
   clearTimeout(hintTimer);
   if (hintText && isPhone()) hintTimer = window.setTimeout(() => hint.classList.add('fade'), 5000);
+  if (t === 'measure') measureStepHint(); // names the current measure mode's first step
   if (isPhone() && t !== 'none') {
     openSheet('right');
     document.body.classList.toggle('sheet-min', ['measure', 'paint', 'layflat'].includes(t));
@@ -1341,7 +1345,15 @@ function measureStepHint() {
   const h = measure.hoverTarget;
   const over = h?.kind === 'circle' ? (h.showRadius ? `${tap} to keep this radius` : `${tap} to keep this diameter`) : h?.kind === 'edge' ? `${tap} to keep this edge length` : '';
   let text: string;
-  if (measure.mode === 'circle') text = `${tap} point ${n + 1} of 3 around the hole · ${stop}`;
+  const ent = measure.hoverEnt;
+  const entWord = ent ? ({ vertex: 'corner', line: 'edge', circle: 'round edge', plane: 'face', cyl: ent.t === 'cyl' ? (ent.cyl.type === 'hole' ? 'hole' : ent.cyl.type === 'boss' ? 'shaft' : 'fillet') : '', surface: 'surface' } as Record<string, string>)[ent.t] : '';
+  if (measure.mode === 'select') {
+    const stopSel = isTouch() ? 'Done to stop' : n ? 'Esc clears the selection' : measure.list.length ? 'Esc clears all' : 'Esc to stop';
+    if (n) text = ent && ent.key === measure.selected?.key ? `${measure.selectionInfo?.keep ? `${tap} again to keep this size · or pick` : 'Pick'} a second face, edge, hole or corner · ${stopSel}`
+      : ent ? `${tap} this ${entWord} to measure from the selection · ${stopSel}` : `Now pick a second face, edge, hole or corner · ${stopSel}`;
+    else text = ent ? `${tap} to select this ${entWord} · ${stopSel}` : `${tap} a face, edge, hole or corner · then a second one to measure between them · ${stopSel}`;
+  }
+  else if (measure.mode === 'circle') text = `${tap} point ${n + 1} of 3 around the hole · ${stop}`;
   else if (n) text = `Now ${tap.toLowerCase()} the second point · snaps to corners, hole centres and edges · ${stop}`;
   else if (over) text = `${over} · ${stop}`;
   else if (measure.mode === 'diameter') text = `Point at a hole, shaft or round edge · ${stop}`;
@@ -1671,7 +1683,8 @@ function toolSection(): string {
             <input class="mi-name" value="${esc(m.name)}" data-mname="${m.id}" aria-label="Name"/>
             <div class="mi-main">${valueText(m, fmtD)}</div>
             ${m.info ? `<div class="mi-sub mi-what">${esc(m.info)}</div>` : ''}
-            ${m.kind === 'circle'
+            ${m.facts ? m.facts.map((f) => `<div class="mi-sub">${esc(f.label)} ${fmtFact(f)}</div>`).join('') + (m.headline !== 'angle' ? `<div class="mi-sub">ΔX ${fmtNum(toDisp(m.delta.x))} · ΔY ${fmtNum(toDisp(m.delta.y))} · ΔZ ${fmtNum(toDisp(m.delta.z))} ${UNITS[dispUnit()].short}</div>` : '')
+            : m.kind === 'circle'
               ? `<div class="mi-sub">${m.showRadius ? `Diameter ${fmtD(m.distance)}` : `Radius ${fmtD(m.radius!)}`} · circumference ${fmtD(Math.PI * m.distance)}</div>`
               : `<div class="mi-sub">ΔX ${fmtNum(toDisp(m.delta.x))} · ΔY ${fmtNum(toDisp(m.delta.y))} · ΔZ ${fmtNum(toDisp(m.delta.z))} ${UNITS[dispUnit()].short}</div>
                  ${m.angle !== null ? `<div class="mi-sub">Angle between faces ${fmtNum(m.angle, 2)}°</div>` : ''}
@@ -1686,17 +1699,28 @@ function toolSection(): string {
       return `<div class="section">
         <div class="section-head"><span class="section-title">${t('Measure')}</span><span class="grow"></span>
           ${measure.list.length ? `<button class="chip" data-mexport>${icon('download')}JSON</button><button class="chip danger" data-mclear>${icon('trash')}${t('Clear')}</button>` : ''}</div>
-        <div class="seg seg-4" style="margin-bottom:8px">${([['smart', 'Smart'], ['distance', 'Distance'], ['diameter', 'Diameter'], ['edge', 'Edge']] as const).map(([k, l]) => `<button class="${measure.mode === k || (k === 'diameter' && measure.mode === 'circle') ? 'active' : ''}" data-mmode="${k}">${l}</button>`).join('')}</div>
+        <div class="seg" style="margin-bottom:8px">${([['select', 'Faces & edges'], ['distance', 'Points']] as const).map(([k, l]) => `<button class="${(k === 'select' ? measure.mode === 'select' : measure.mode !== 'select') ? 'active' : ''}" data-mmode="${k}">${l}</button>`).join('')}</div>
         <p class="note" style="margin-top:0">${(() => {
           const tap = isTouch() ? 'Tap' : 'Click';
           switch (measure.mode) {
+            case 'select': return `${tap} a face, edge, hole or corner to see its size, then ${tap.toLowerCase()} a second one to measure the distance and angle between them. ${tap} the same one again to keep its size.`;
             case 'smart': return `Point at a hole or round edge to see its diameter, or at an edge to see its length, then ${tap.toLowerCase()} to keep it. ${tap} a corner or face to start a distance.`;
-            case 'distance': return `${tap} two points. Snaps to corners, hole centres (point at the hole's wall or rim), edge midpoints and edges. Hold Shift on a rim for a point on the rim instead of its centre.`;
+            case 'distance': return `${tap} two points. Snaps to corners, hole centres (point at the hole's wall or rim), edge midpoints and edges. Hold Shift on a rim for a point on the rim instead of its centre. <button class="link-btn" data-mmode="circle">3 points around a circle</button>`;
             case 'diameter': return `Point at a hole, shaft, round edge or fillet: its diameter (or radius) shows up, ${tap.toLowerCase()} to keep it. <button class="link-btn" data-mmode="circle">Use 3 points instead</button>`;
             case 'edge': return `Point at an edge of the model: straight edges give their length, round edges their radius and length.`;
-            default: return `${tap} three points around a hole or round edge${measure.pendingCount ? ` (${measure.pendingCount}/3)` : ''}. <button class="link-btn" data-mmode="diameter">Find holes automatically</button>`;
+            default: return `${tap} three points around a hole or round edge${measure.pendingCount ? ` (${measure.pendingCount}/3)` : ''}. <button class="link-btn" data-mmode="distance">Back to two points</button>`;
           }
         })()}${isTouch() ? ' Drag with one finger to orbit between taps.' : ''}</p>
+        ${(() => {
+          const si = measure.selectionInfo;
+          if (measure.mode !== 'select' || !si) return '';
+          return `<div class="measure-sel">
+            <div class="ms-head"><span class="ms-title">${esc(si.title)}</span><span class="grow"></span>
+              ${si.keep ? `<button class="chip" data-mkeep>${t('Keep')}</button>` : ''}<button class="node-btn" style="opacity:1" data-mdesel aria-label="Clear selection">${icon('x')}</button></div>
+            ${si.facts.map((f) => `<div class="ms-row"><span>${esc(f.label)}</span><b>${fmtFact(f)}</b></div>`).join('')}
+            <div class="ms-hint">Pick a second face, edge, hole or corner to measure between them.</div>
+          </div>`;
+        })()}
         ${measure.mode === 'distance' || measure.mode === 'smart' ? `<div class="row"><label for="mSnap">Snap to</label><select id="mSnap" data-msnapmode>
           ${([['auto', 'Corners, hole centres, edges'], ['corner', 'Corners only'], ['centre', 'Hole centres only'], ['edge', 'Edges and midpoints'], ['off', 'Nothing (free point)']] as const).map(([k, l]) => `<option value="${k}" ${measure.snapMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
         <div class="row"><label for="mRadius">Snap distance</label><input type="range" id="mRadius" min="4" max="40" step="1" value="${measure.snapRadius}" data-msnapradius aria-label="Snap distance in pixels"/></div>
@@ -2010,18 +2034,123 @@ function renderDetails() {
     return;
   }
   const scroll = host.scrollTop;
+  const before = panelSnapshot(host);
   host.innerHTML = toolSection() + selectionSection() + modelSection() + healthSection() + costSection() + historySection();
   host.scrollTop = scroll;
+  glowChanges(host, before);
   const p = panels.get(state.tool);
   const sec = host.querySelector<HTMLElement>('[data-panel]');
   if (p?.bind && sec) p.bind(sec);
 }
 
+// ------------------------------------------------------------------ update glow
+// A click in the 3D view (selecting a part, measuring) often changes the panel on the right without the user
+// noticing where. Every block whose content changed glows briefly, so the eye is drawn to what was updated.
+const GLOW_MS = 1600;
+const glowStarted = new Map<string, number>();
+let lastPanelInput = 0;
+/** One key per block: measurements by id, other blocks by section and position. */
+function panelBlocks(host: HTMLElement) {
+  const out = new Map<string, HTMLElement>();
+  host.querySelectorAll<HTMLElement>(':scope > .section, :scope > [data-panel]').forEach((sec, si) => {
+    const title = sec.querySelector('.section-title')?.textContent?.trim() || sec.id || `s${si}`;
+    out.set(`S:${title}`, sec);
+    const seen = new Map<string, number>();
+    for (const child of Array.from(sec.children) as HTMLElement[]) {
+      if (child.classList.contains('section-head')) continue;
+      const id = child.querySelector<HTMLElement>('[data-mremove]')?.dataset.mremove;
+      const base = id ? `m${id}` : child.className.replace(/\s*upd-glow/g, '') || child.tagName;
+      const k = seen.get(base) ?? 0;
+      seen.set(base, k + 1);
+      const key = `S:${title}/${base}#${k}`;
+      out.set(key, child);
+      // Rounded cards inside a row (the X/Y/Z size boxes) glow one by one, following their own corners.
+      cardsIn(child).forEach((card, i) => out.set(`${key}>${i}`, card));
+    }
+  });
+  return out;
+}
+/** Bordered, rounded boxes up to two levels inside a block. */
+function cardsIn(block: HTMLElement) {
+  const out: HTMLElement[] = [];
+  const isCard = (el: HTMLElement) => {
+    if (!/^(DIV|SECTION|LI|DL|ARTICLE)$/.test(el.tagName)) return false;
+    const cs = getComputedStyle(el);
+    return cs.borderTopLeftRadius !== '0px' && cs.borderTopWidth !== '0px';
+  };
+  for (const c of Array.from(block.children) as HTMLElement[]) {
+    if (isCard(c)) { out.push(c); continue; }
+    for (const g of Array.from(c.children) as HTMLElement[]) if (isCard(g)) out.push(g);
+  }
+  return out;
+}
+function panelSnapshot(host: HTMLElement) {
+  const m = new Map<string, string>();
+  panelBlocks(host).forEach((el, k) => m.set(k, el.textContent || ''));
+  return m;
+}
+let glowContext = '';
+let panelGlowAt = -Infinity;
+/** The whole panel glows when most of it changed (another part, another tool); single rows glow on their own. */
+function glowPanel(now: number) {
+  if (now - panelGlowAt < GLOW_MS) return; // still glowing: let it finish instead of restarting
+  panelGlowAt = now;
+  const panel = document.getElementById('rightPanel');
+  if (!panel) return;
+  panel.classList.remove('panel-glow'); void panel.offsetWidth; panel.classList.add('panel-glow');
+}
+function glowChanges(host: HTMLElement, before: Map<string, string>) {
+  const now = performance.now();
+  // A different part or tool means the panel's content was swapped, not a value updated.
+  const context = `${state.tool}|${editor.selected?.uuid ?? ''}|${editor.multi.size}`;
+  const swapped = glowContext !== '' && context !== glowContext;
+  glowContext = context;
+  // Nothing to compare against (first render, a new model) or the user is working in the panel itself.
+  const quiet = before.size === 0 || now - lastPanelInput < 700;
+  const blocks = panelBlocks(host);
+  const differsAt = (k: string, el: HTMLElement) => {
+    const prev = before.get(k);
+    if (prev !== undefined) return prev !== (el.textContent || '');
+    const parent = k.includes('>') ? k.slice(0, k.lastIndexOf('>')) : k.split('/')[0];
+    return !k.includes('/') || before.has(parent);
+  };
+  // A row whose changed part is one of its rounded cards glows only that card, not a rectangle around the row.
+  const viaCard = new Set<string>();
+  blocks.forEach((el, k) => { if (k.includes('>') && differsAt(k, el)) viaCard.add(k.slice(0, k.lastIndexOf('>'))); });
+  const fresh: string[] = [];
+  blocks.forEach((el, k) => {
+    const isSection = !k.includes('/');
+    // Only a whole section that is new counts; inside a section just the changed rows.
+    if (!quiet && differsAt(k, el) && !viaCard.has(k) && (!isSection || !before.has(k))) fresh.push(k);
+  });
+  const many = !quiet && fresh.length > 0 && (swapped || fresh.length >= 4);
+  if (many) glowPanel(now);
+  else for (const k of fresh) {
+    const started = glowStarted.get(k);
+    if (started === undefined || now - started > GLOW_MS) glowStarted.set(k, now);
+  }
+  blocks.forEach((el, k) => {
+    const started = glowStarted.get(k);
+    if (started !== undefined && now - started < GLOW_MS) {
+      // The element was re-created: carry on the animation where it was instead of restarting it.
+      el.classList.add('upd-glow');
+      el.style.animationDelay = `${-(now - started)}ms`;
+    }
+  });
+  for (const [k, t0] of glowStarted) if (now - t0 > GLOW_MS) glowStarted.delete(k);
+  // Details tab not on screen: glow its tab button too.
+  if (fresh.length && !quiet && host.classList.contains('hidden')) {
+    const tab = document.querySelector<HTMLElement>('[data-rtab="details"]');
+    if (tab) { tab.classList.remove('upd-glow'); void tab.offsetWidth; tab.classList.add('upd-glow'); }
+  }
+}
+
 // Details panel events (delegated)
 const details = $('#rtab-details');
+for (const ev of ['pointerdown', 'keydown', 'input', 'change'] as const) details.addEventListener(ev, () => { lastPanelInput = performance.now(); }, true);
 details.addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
-  const el = t.closest<HTMLElement>('[data-sel],[data-msel],[data-ifcsame],[data-mremove],[data-mcopy],[data-mhide],[data-mrefresh],[data-mexport],[data-mclear],[data-mmode],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply],[data-unitforget],[data-unitremember],[data-animplay],[data-animreset],[data-ptcolor],[data-focus],[data-histundo],[data-reloadorig],[data-showcost]');
+  const el = t.closest<HTMLElement>('[data-sel],[data-msel],[data-ifcsame],[data-mremove],[data-mcopy],[data-mhide],[data-mrefresh],[data-mexport],[data-mclear],[data-mmode],[data-mkeep],[data-mdesel],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply],[data-unitforget],[data-unitremember],[data-animplay],[data-animreset],[data-ptcolor],[data-focus],[data-histundo],[data-reloadorig],[data-showcost]');
   if (!el) return;
   const d = el.dataset;
   const o = editor.selected;
@@ -2081,7 +2210,9 @@ details.addEventListener('click', (e) => {
   if (d.mrefresh) measure.refresh(Number(d.mrefresh));
   if ('mexport' in d) download(new Blob([JSON.stringify({ model: state.modelName, unit: UNITS[dispUnit()].label, measurements: measure.toJSON((v) => fmtD(v)) }, null, 2)], { type: 'application/json' }), `${baseFileName()}-measurements.json`);
   if ('mclear' in d) measure.clear();
-  if (d.mmode) { measure.setMode(d.mmode as MeasureMode); measure.setActive(true); renderDetails(); }
+  if (d.mmode) { measure.setMode(d.mmode as MeasureMode); measure.setActive(true); if (d.mmode === 'select' || d.mmode === 'distance') store.set('measureMode', d.mmode); renderDetails(); }
+  if ('mkeep' in d) measure.keepSelected();
+  if ('mdesel' in d) measure.cancelPoint();
   if (d.pmode) { paint.mode = d.pmode as any; setTool('paint'); setTool('paint'); }
   if (d.pswatch) { paint.color.set(d.pswatch); renderDetails(); }
   if (d.secaxis) viewer.setSection({ axis: d.secaxis as Axis });
