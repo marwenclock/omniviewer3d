@@ -19,7 +19,12 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', t('Selected part'));
   bar.innerHTML = `
-    <span class="sb-name" id="sbName"></span>
+    <div class="sb-head">
+      <span class="sb-name" id="sbName"></span>
+      <button class="sb-btn sb-part sb-danger sb-phone" data-sb="delete" aria-label="${t('Delete')}">${icon('trash')}</button>
+      <button class="sb-btn sb-phone" data-sb="deselect" aria-label="${t('Deselect')}">${icon('x')}</button>
+    </div>
+    <div class="sb-row">
     <div class="sb-group">
       <button class="sb-btn sb-main" data-gizmo="translate" data-tip="${t('Move')} (W)" aria-label="${t('Move')}">${icon('move')}<span>${t('Move')}</span></button>
       <button class="sb-btn sb-main" data-gizmo="rotate" data-tip="${t('Rotate')} (E)" aria-label="${t('Rotate')}">${icon('rotate')}<span>${t('Rotate')}</span></button>
@@ -27,15 +32,16 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
       <button class="sb-btn sb-snap" data-sb="snap" data-tip="${t('Snap to steps')}" aria-label="${t('Snap to steps')}" aria-pressed="false">${icon('target')}</button>
     </div>
     <div class="sb-group">
-      <button class="sb-btn" data-sb="focus" data-tip="${t('Zoom to part')} (F)" aria-label="${t('Zoom to part')}">${icon('fit')}</button>
-      <button class="sb-btn" data-sb="hide" data-tip="${t('Hide')} (H)" aria-label="${t('Hide')}">${icon('eyeoff')}</button>
+      <button class="sb-btn" data-sb="focus" data-tip="${t('Zoom to part')} (F)" aria-label="${t('Zoom to part')}">${icon('fit')}<span class="sb-cap">${t('Zoom')}</span></button>
+      <button class="sb-btn" data-sb="hide" data-tip="${t('Hide')} (H)" aria-label="${t('Hide')}"><i class="sb-ic">${icon('eyeoff')}</i><span class="sb-cap">${t('Hide')}</span></button>
       <button class="sb-btn" data-sb="isolate" data-tip="${t('Show only this')}" aria-label="${t('Show only this')}">${icon('isolate')}</button>
       <button class="sb-btn sb-part" data-sb="dup" data-tip="${t('Duplicate')} (Ctrl+D)" aria-label="${t('Duplicate')}">${icon('copy')}</button>
       <button class="sb-btn sb-part sb-danger" data-sb="delete" data-tip="${t('Delete')} (Del)" aria-label="${t('Delete')}">${icon('trash')}</button>
     </div>
     <div class="sb-group">
-      <button class="sb-btn" data-sb="details" data-tip="${t('Size, position and material')}" aria-label="${t('Properties')}">${icon('info')}</button>
+      <button class="sb-btn" data-sb="details" data-tip="${t('Size, position and material')}" aria-label="${t('Properties')}">${icon('info')}<span class="sb-cap">${t('Details')}</span></button>
       <button class="sb-btn" data-sb="deselect" data-tip="${t('Deselect')} (Esc)" aria-label="${t('Deselect')}">${icon('x')}</button>
+    </div>
     </div>`;
   stage.appendChild(bar);
   const nameEl = bar.querySelector<HTMLElement>('#sbName')!;
@@ -55,6 +61,8 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
   let boxDirty = true;
   const corners = Array.from({ length: 8 }, () => new THREE.Vector3());
   let visible = false;
+  /** Phones: a lite bar docked above the bottom bar instead of one that follows the part (fingers, small screen). */
+  let docked = false;
   let lastCss = '';
 
   const shouldShow = () => {
@@ -63,13 +71,17 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
     const tool = ctx.activeTool();
     // Tools that use clicks on the model for themselves (measure, paint) or float their own panels: stay out of the way.
     if (tool && tool !== 'none') return false;
-    return !ctx.isPhone();
+    return true;
   };
 
   const sync = () => {
     const show = shouldShow();
     boxDirty = true;
+    const phone = ctx.isPhone();
+    if (phone !== docked) { docked = phone; bar.classList.toggle('docked', phone); bar.style.transform = ''; lastCss = ''; }
     if (show !== visible) { visible = show; bar.classList.toggle('hidden', !show); lastCss = ''; }
+    // Phones: the lite bar replaces the Undo / Done chips that sit in the same spot.
+    document.body.classList.toggle('selbar-docked', show && phone);
     if (!show) return;
     const o = editor.selected!;
     const many = editor.selection.length;
@@ -80,13 +92,12 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
     bar.classList.toggle('gizmo-on', editor.gizmo !== 'none');
     snapBtn.classList.toggle('active', editor.snap);
     snapBtn.setAttribute('aria-pressed', String(editor.snap));
-    const hide = bar.querySelector<HTMLElement>('[data-sb="hide"]')!;
-    hide.innerHTML = icon(o.visible ? 'eyeoff' : 'eye');
+    bar.querySelector<HTMLElement>('[data-sb="hide"] .sb-ic')!.innerHTML = icon(o.visible ? 'eyeoff' : 'eye');
     place();
   };
 
   const place = () => {
-    if (!visible) return;
+    if (!visible || docked) return;
     const o = editor.selected;
     if (!o) return;
     if (boxDirty) { box.setFromObject(o); boxDirty = false; }
@@ -121,7 +132,7 @@ export function initSelectionBar(run: (a: SelBarAction) => void) {
   // While dragging a gizmo handle the bar fades, so it never sits under the cursor.
   editor.transform.addEventListener('dragging-changed', (e: any) => bar.classList.toggle('dragging', !!e.value));
   viewer.onFrame(place);
-  window.addEventListener('resize', () => { lastCss = ''; place(); });
+  window.addEventListener('resize', () => { lastCss = ''; sync(); });
 
   return { sync };
 }

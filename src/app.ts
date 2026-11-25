@@ -199,6 +199,16 @@ const state = {
 const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 await yieldToMain(); // after three.js and the other modules have been evaluated
 const viewer = new Viewer($('#viewport'));
+// The floating panels leave gaps onto the layout behind them: paint those in the view's own background colour so
+// the cards read as floating over one continuous view (style.css, "floating panels").
+{
+  const setBg = viewer.setBackground.bind(viewer);
+  viewer.setBackground = (color: string | null) => {
+    setBg(color);
+    if (color) document.documentElement.style.setProperty('--view-bg', color);
+    else document.documentElement.style.removeProperty('--view-bg');
+  };
+}
 if (import.meta.env.DEV) (window as any).__viewer = viewer; // dev console handle
 await yieldToMain(); // after the WebGL context is created
 setSharedRenderer(viewer.renderer);
@@ -2908,6 +2918,7 @@ selBar = initSelectionBar((a) => {
     case 'snap': editor.setSnap(!editor.snap); break;
     case 'deselect': selectObject(null); break;
     case 'details':
+      if (isPhone()) { openSheet('right'); document.body.classList.remove('sheet-min'); }
       document.body.classList.remove('no-right');
       $$<HTMLElement>('[data-rtab]').forEach((b) => b.classList.toggle('active', b.dataset.rtab === 'details'));
       $('#rtab-details').classList.remove('hidden');
@@ -3630,8 +3641,7 @@ $$('.sheet-handle').forEach((h) => {
   });
 });
 $$('[data-close]').forEach((b) => b.addEventListener('click', () => { document.body.classList.remove('sheet-min'); setTimeout(syncBar); }));
-// Selecting a part on a phone shows its details in a small sheet.
-editor.onChange(() => { if (isPhone() && editor.selected && document.body.classList.contains('no-right') && document.body.classList.contains('no-left')) { openSheet('right'); document.body.classList.add('sheet-min'); } });
+// Selecting a part on a phone shows the docked selection bar (features/selbar.ts); its Details button opens the sheet.
 window.addEventListener('resize', () => { if (!isPhone()) document.body.classList.remove('sheet-min'); syncBar(); });
 syncBar();
 

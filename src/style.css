@@ -1445,3 +1445,78 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
 .selbar:not(.gizmo-on) .sb-snap { display: none; }
 /* The whole model can't be duplicated or deleted from here */
 .selbar.is-root .sb-part { display: none; }
+.sb-head { display: flex; align-items: center; min-width: 0; }
+.sb-cap, .sb-btn.sb-phone { display: none; }
+.sb-ic { display: contents; }
+.sb-row { display: contents; }
+
+/* Phones: a lite bar docked above the bottom bar (it doesn't follow the part: fingers would cover it). One row of
+   big labelled buttons for the everyday actions; duplicate / isolate / snap stay in the Details sheet. */
+@media (max-width: 700px) {
+  .selbar.docked {
+    left: 12px; right: 12px; top: auto; bottom: calc(var(--bar) + var(--sheet-h, 0px) + 8px); transform: none !important;
+    flex-direction: column; align-items: stretch; gap: 0; padding: 4px 6px 6px; border-radius: 18px;
+  }
+  .selbar.docked .sb-head { padding: 2px 0 2px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+  .selbar.docked .sb-name { flex: 1; max-width: none; padding: 0; font-size: 13px; }
+  .selbar.docked .sb-btn.sb-phone { display: inline-flex; width: 40px; height: 36px; }
+  .selbar.docked .sb-group { display: contents; }
+  .selbar.docked .sb-row { display: flex; }
+  .selbar.docked .sb-btn:not(.sb-phone) { flex: 1 1 0; flex-direction: column; gap: 4px; height: 54px; min-width: 0; padding: 0 2px; font-size: 11px; }
+  .selbar.docked .sb-btn svg { width: 20px; height: 20px; }
+  .selbar.docked .sb-cap { display: inline; }
+  .selbar.docked .sb-snap,
+  .selbar.docked [data-sb='isolate'],
+  .selbar.docked [data-sb='dup'],
+  .selbar.docked .sb-group [data-sb='delete'],
+  .selbar.docked .sb-group [data-sb='deselect'] { display: none !important; }
+  /* the Undo / Done chips use the same spot; undo stays on the floating view buttons */
+  body.selbar-docked .ctx-bar { display: none !important; }
+  /* lift the view cube (and its reset button) above the docked bar */
+  body.selbar-docked .viewcube { bottom: calc(var(--bar) + var(--sheet-h, 0px) + 128px); transition: bottom 0.2s; }
+}
+
+/* ------------------------------------------------------------ floating panels (desktop and tablet)
+   The tool rail, the Parts panel and the Details panel float over the view as rounded glass cards, in the same
+   language as the selection bar, the camera dock and the phone pill: one tool rather than a frame around a view.
+   The gaps around the cards show the view's own background colour (--view-bg, set in app.ts). */
+@media (min-width: 701px) {
+  body.has-model:not(.embed) .layout { background: var(--view-bg, var(--bg-2)); }
+  body .side, body .side.right, body .lab-railnav {
+    margin: 10px 0; height: auto; border: 1px solid var(--line-2); border-radius: 16px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  }
+  body .lab-railnav { margin-left: 10px; }
+  .side.left { margin-left: 10px; }
+  .lab-railnav + .side.left { margin-left: 8px; }
+  .side.right { margin-right: 10px; }
+  .panel-resizer { top: 14px; bottom: 14px; border-radius: 3px; }
+  .side-body { border-radius: 0 0 16px 16px; }
+  .panel-toggle { border-radius: 12px; background: color-mix(in srgb, var(--panel) 92%, transparent); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+}
+/* 701–900px: the panels already overlay the view; inset them like cards */
+@media (min-width: 701px) and (max-width: 900px) {
+  .side, .side.right { top: 0; bottom: 0; margin: 10px; }
+  .side.left { left: 0; }
+  .side.right { right: 0; }
+}
+/* Light theme: softer shadows for every floating card */
+:root[data-theme='light'] .side, :root[data-theme='light'] .lab-railnav, :root[data-theme='light'] .selbar,
+:root[data-theme='light'] .lab-pill, :root[data-theme='light'] .lab-split .tb-group, :root[data-theme='light'] .panel-toggle {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Panel tabs: pills, like the rail and selection bar buttons (no more [bracketed] underlined tabs) */
+.side-tabs { gap: 2px; padding: 8px; border-bottom: 1px solid var(--line); }
+.side-tabs .side-tab {
+  padding: 6px 12px; margin: 0; border: 0; border-radius: 9px;
+  font: 500 12px var(--font); letter-spacing: 0.01em; color: var(--ink-2);
+}
+.side-tabs .side-tab:hover { background: var(--surface-2); color: var(--ink); }
+.side-tabs .side-tab.active { background: var(--ink); color: var(--bg); font-weight: 600; }
+.side-close { border-radius: 9px; }
+@media (max-width: 700px) {
+  .side-tabs { padding: 0 12px 8px; }
+  .side-tabs .side-tab { padding: 8px 14px; font-size: 13px; }
+}

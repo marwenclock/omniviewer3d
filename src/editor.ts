@@ -29,7 +29,11 @@ export class Editor {
 
   constructor(private viewer: Viewer, private history: History) {
     this.transform = new TransformControls(viewer.camera, viewer.renderer.domElement);
-    this.transform.setSize(1.05);
+    // Bigger handles on phones, so a fingertip can grab an arrow without hitting its neighbour.
+    const phone = matchMedia('(max-width: 700px)');
+    const fitSize = () => this.transform.setSize(phone.matches ? 1.6 : 1.05);
+    fitSize();
+    phone.addEventListener('change', fitSize);
     styleGizmo(this.transform);
     const helper = this.transform.getHelper();
     helper.userData.helper = true;
