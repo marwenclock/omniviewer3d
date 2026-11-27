@@ -396,7 +396,11 @@ async function loadOne(
     case '3mf': {
       const { ThreeMFLoader } = await import('three/addons/loaders/3MFLoader.js');
       const data = await buf();
-      return one(new ThreeMFLoader(manager).parse(data), [], unitOf3MF(data));
+      const obj = new ThreeMFLoader(manager).parse(data);
+      // Multi-colour painting from Bambu Studio / OrcaSlicer / PrusaSlicer (per-triangle filament marks).
+      const { applyPaint3MF } = await import('./paint3mf');
+      applyPaint3MF(obj, data);
+      return one(obj, [], unitOf3MF(data));
     }
     case 'dae': {
       const { ColladaLoader } = await import('three/addons/loaders/ColladaLoader.js');

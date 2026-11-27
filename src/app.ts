@@ -33,7 +33,7 @@ import { initQuickConvert, openQuickConvert, closeQuickConvert, qcAdd, qcIsOpen 
 import { initViewCube } from './features/viewcube';
 import { initSelectionBar } from './features/selbar';
 import { initToolPill } from './features/toolpill';
-import { pieceCount, splitIntoPieces, savePiecesAsStl } from './features/pieces';
+import { pieceCount, splitIntoPieces, savePiecesAsStl, colourCount, splitByColour, colourDepthMm, setColourDepthMm } from './features/pieces';
 // eslint-disable-next-line no-var -- read by updateToolbar(), which runs before the bar is created
 var selBar: ReturnType<typeof initSelectionBar> | undefined;
 var toolPill: ReturnType<typeof initToolPill> | undefined;
@@ -1753,6 +1753,7 @@ function toolSection(): string {
         <div class="palette">${PAINT_COLORS.map((c) => `<button style="background:${c}" data-pswatch="${c}" class="${c === hex ? 'active' : ''}" aria-label="${c}"></button>`).join('')}</div>
         ${paint.mode === 'brush' ? `<div class="row"><label>Brush size</label><input type="range" min="0.005" max="0.2" step="0.005" value="${paint.radius}" data-pradius /></div>` : ''}
         <p class="note">Painted colours are saved as vertex colours, so they are kept when you export to GLB, PLY or 3MF. Undo with Ctrl+Z.</p>
+        ${(() => { const ms = viewer.model ? modelMeshes(viewer.model, true) : []; const n = ms.length <= 40 ? ms.reduce((k, m) => Math.max(k, colourCount(m)), 1) : 1; return n > 1 ? colourSplitHtml(n) : ''; })()}
       </div>`;
     }
     case 'section': {
@@ -1832,7 +1833,8 @@ function selectionSection(): string {
     <p class="note">Element data is shown here only; mesh exports (GLB, OBJ, STL…) don't keep IFC properties.</p></div>` : '';
   const pieces = mesh && !(mesh as any).isInstancedMesh ? pieceCount(mesh) : 1;
   const childMeshes = !mesh ? modelMeshes(o).length : 0;
-  const piecesHtml = pieces > 1
+  const colours = mesh && !(mesh as any).isInstancedMesh ? colourCount(mesh) : 1;
+  const piecesHtml = colours > 1 ? colourSplitHtml(colours) + (pieces > 1 ? `<div class="btn-row"><button class="chip" data-pieces="split">${icon('group')}Split into ${pieces} pieces instead</button></div>` : '') : pieces > 1
     ? `<div class="pieces-card"><div><b>${pieces} separate pieces</b><small>This part holds ${pieces} bodies, like the parts a slicer lets you give their own filament.</small></div>
         <div class="btn-row"><button class="chip" data-pieces="split">${icon('group')}Split into pieces</button><button class="chip" data-pieces="xray">${icon('layers')}See inside (X-ray)</button></div></div>`
     : childMeshes > 1 ? `<div class="btn-row"><button class="chip" data-pieces="stl">${icon('download')}Save each part as STL (${childMeshes})</button></div>` : '';
@@ -1973,6 +1975,8 @@ function modelSection(): string {
       // One mesh holding several bodies (a logo in a base): offer to split it, like a slicer's "split to objects".
       const ms = modelMeshes(viewer.model, true);
       if (ms.length > 40 || editor.selected) return '';
+      const cols = ms.reduce((k, m) => Math.max(k, colourCount(m)), 1);
+      if (cols > 1) return colourSplitHtml(cols);
       const n = ms.reduce((k, m) => k + (pieceCount(m) > 1 ? pieceCount(m) : 0), 0);
       return n ? `<div class="pieces-card"><div><b>${n} separate pieces inside</b><small>Bodies a slicer can give their own filament. Split them into parts to pick, isolate or save each one as STL.</small></div>
         <div class="btn-row"><button class="chip" data-pieces="split">${icon('group')}Split into pieces</button><button class="chip" data-pieces="xray">${icon('layers')}X-ray</button></div></div>`
@@ -2078,6 +2082,12 @@ function renderDetails() {
   toolPill?.sync();
 }
 
+/** "Split by colour" card for painted meshes (painted in the app or a multi-colour 3MF). */
+function colourSplitHtml(n: number) {
+  return `<div class="pieces-card"><div><b>${n} colours painted</b><small>Split into one closed part per colour, like a slicer prints them, then save each as STL. Painted areas become solids this deep:</small></div>
+    <div class="btn-row"><label class="tp-field">Depth <input type="number" min="0.1" step="0.1" value="${colourDepthMm()}" data-colordepth aria-label="Depth of painted areas in millimetres"/> mm</label><button class="chip" data-colorsplit>${icon('group')}Split by colour</button></div></div>`;
+}
+
 // ------------------------------------------------------------------ floating tool pill (features/toolpill.ts)
 /** The active tool's main control, floating under the model. Same data- attributes as the Details panel. */
 function toolPillHtml(): string {
@@ -2088,8 +2098,8 @@ function toolPillHtml(): string {
     case 'explode': {
       // One mesh holding several bodies has nothing to pull apart until it is split.
       const ms = modelMeshes(viewer.model, true);
-      const canSplit = ms.length <= 4 && ms.some((m) => pieceCount(m) > 1);
-      if (canSplit) return `${name('Explode')}<span class="tp-val" style="font-family:inherit">${ms.length === 1 ? 'One part, several bodies' : 'Bodies share a part'}</span><button class="tp-go" data-pieces="split">${icon('group')}Split into pieces</button>${close}`;
+      const canSplit = ms.length === 1 && pieceCount(ms[0]) > 1;
+      if (canSplit) return `${name('Explode')}<span class="tp-val" style="font-family:inherit">One part, several bodies</span><button class="tp-go" data-pieces="split">${icon('group')}Split into pieces</button>${close}`;
       return `${name('Explode')}<input type="range" min="0" max="2" step="0.01" value="${viewer.explode}" data-explode aria-label="Explode amount" />
         <button class="tp-btn" data-tpreset ${viewer.explode ? '' : 'disabled'} data-tip="Put the parts back" aria-label="Put the parts back">${icon('reset')}</button>${close}`;
     }
@@ -2106,7 +2116,8 @@ function toolPillHtml(): string {
       return `<div class="tp-seg">${modes.map(([k, l, tip]) => `<button class="${paint.mode === k ? 'active' : ''}" data-pmode="${k}" data-tip="${tip}">${l}</button>`).join('')}</div>
         <div class="tp-swatches">${PAINT_COLORS.slice(0, 8).map((c) => `<button style="background:${c}" data-pswatch="${c}" class="${c === hex ? 'active' : ''}" aria-label="${c}"></button>`).join('')}
         <label class="tp-color" data-tip="Any colour" style="background:${hex}"><input type="color" value="${hex}" data-pcolor aria-label="Colour" /></label></div>
-        ${paint.mode === 'brush' ? `<input type="range" class="tp-short" min="0.005" max="0.2" step="0.005" value="${paint.radius}" data-pradius aria-label="Brush size" data-tip="Brush size" />` : ''}${close}`;
+        ${paint.mode === 'brush' ? `<input type="range" class="tp-short" min="0.005" max="0.2" step="0.005" value="${paint.radius}" data-pradius aria-label="Brush size" data-tip="Brush size" />` : ''}
+        ${(() => { const ms = modelMeshes(viewer.model, true); return ms.length <= 40 && ms.some((m) => colourCount(m) > 1) ? `<button class="tp-btn tp-txt" data-colorsplit data-tip="One closed part per colour, ready to save as STL">${icon('group')}<span>Split by colour</span></button>` : ''; })()}${close}`;
     }
     case 'measure': {
       const n = measure.list.length;
@@ -2244,6 +2255,11 @@ const details = $('#rtab-details');
 for (const ev of ['pointerdown', 'keydown', 'input', 'change'] as const) details.addEventListener(ev, () => { lastPanelInput = performance.now(); }, true);
 const onPanelClick = (e: Event) => {
   const t = e.target as HTMLElement;
+  if (t.closest('[data-colorsplit]')) {
+    setLoading('Splitting by colour…');
+    setTimeout(() => { splitByColour(colourDepthMm()).catch((err) => toast('Split failed: ' + (err?.message || err), true)).finally(() => setLoading(null)); }, 30);
+    return;
+  }
   const pc = t.closest<HTMLElement>('[data-pieces]');
   if (pc) {
     if (pc.dataset.pieces === 'split') splitIntoPieces();
@@ -2376,6 +2392,7 @@ const onPanelChange = (e: Event) => {
   const t = e.target as HTMLInputElement;
   const d = t.dataset;
   const o = editor.selected;
+  if (d.colordepth !== undefined) setColourDepthMm(Number(t.value));
   if (d.msnap !== undefined) measure.snap = t.checked;
   if (d.msnapmode !== undefined) measure.snapMode = t.value as any;
   if (d.mname !== undefined) measure.rename(Number(d.mname), t.value);

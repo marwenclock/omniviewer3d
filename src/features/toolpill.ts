@@ -98,6 +98,11 @@ export function initToolPill(opts: {
     if (css !== lastCss) { el.style.transform = css; lastCss = css; }
   }
 
+  // Re-anchor when the model changes (fit, split, edits), but not right after the pill's own slider moved it.
+  let lastInput = 0;
+  el.addEventListener('input', () => { lastInput = performance.now(); });
+  viewer.onChange(() => { if (!pressed && performance.now() - lastInput > 1000) { measureBox(); lastCss = ''; } });
+  viewer.controls.addEventListener?.('end', () => { if (performance.now() - lastInput > 1000) measureBox(); });
   viewer.onFrame(place);
   window.addEventListener('resize', () => { lastCss = ''; sync(); });
   return { sync, el };
