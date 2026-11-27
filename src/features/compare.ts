@@ -238,6 +238,11 @@ registerPanel({
       <div class="btn-row"><button class="chip" data-cmpfit>Fit both</button><button class="chip" data-cmpopen>Open another…</button><button class="chip danger" data-cmpclear>Remove B</button></div>
       <p class="note">B is only for comparison: it is not exported or counted in the model details.</p>`;
   },
+  pill() {
+    if (!other) return `<button class="tp-go" data-cmpopen>Open model B…</button>`;
+    return `<div class="tp-seg">${([['overlay', 'Overlay'], ['side', 'Side by side'], ['wipe', 'Wipe']] as const).map(([k, l]) => `<button class="${mode === k ? 'active' : ''}" data-cmpmode="${k}">${l}</button>`).join('')}</div>
+      ${mode === 'overlay' ? `<input type="range" class="tp-short" min="0.1" max="1" step="0.05" value="${opacity}" data-cmpop aria-label="B opacity" data-tip="B opacity"/>` : ''}`;
+  },
   bind(host) {
     host.querySelectorAll('[data-cmpopen]').forEach((b) => b.addEventListener('click', () => {
       const input = document.createElement('input');

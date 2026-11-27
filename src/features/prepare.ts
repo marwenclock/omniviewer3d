@@ -150,6 +150,10 @@ registerPanel({
       <div class="btn-row"><button class="btn-solid" data-ohgo>${overhangShare >= 0 ? 'Check again' : 'Show overhangs'}</button>${overhangShare >= 0 ? '<button class="chip" data-ohclear>Clear colours</button>' : ''}<button class="chip" data-tool="layflat">Try another face down</button></div>
       <p class="note">Uses the current orientation: the floor of the view is the build plate. 45° is a common limit for FDM printing without supports. Bridges between two supports may print fine even when shown red.</p>`;
   },
+  pill() {
+    return `<input type="range" min="20" max="80" step="5" value="${overhangAngle}" data-oh aria-label="Overhang angle from vertical"/><span class="tp-val" data-ohl>${overhangAngle}°</span>
+      <button class="tp-go" data-ohgo>${overhangShare >= 0 ? 'Check again' : 'Show'}</button>`;
+  },
   bind(host) {
     host.querySelector('[data-oh]')?.addEventListener('input', (e) => { overhangAngle = Number((e.target as HTMLInputElement).value); host.querySelector('[data-ohl]')!.textContent = overhangAngle + '°'; store.set('overhang', String(overhangAngle)); });
     host.querySelector('[data-ohgo]')?.addEventListener('click', () => { ctx.setLoading('Finding overhangs…'); setTimeout(() => { try { overhangCheck(); } finally { ctx.setLoading(null); } }, 30); });
@@ -249,6 +253,13 @@ registerPanel({
       <label class="check"><input type="checkbox" data-gtravel ${gTravel ? 'checked' : ''}/> Show travel moves</label>
       <dl class="kv"><dt>Layers</dt><dd>${max + 1}</dd><dt>Extrusion path</dt><dd>${fmtNum(ext / 1000, 2)} m</dd></dl>
       <p class="note">Blue = printed lines, orange = the current layer. G-code is a printer toolpath made of lines, not a solid, so volume, repair and mesh export don't apply. Firmware-specific commands (arcs, macros) may not be drawn.</p>`;
+  },
+  pill() {
+    const lines = gcodeLayers();
+    if (!lines.length) return '';
+    const max = lines.reduce((n, o) => Math.max(n, Number(o.name.slice(5))), 0);
+    const cur = gLayer < 0 ? max : gLayer;
+    return `<input type="range" min="0" max="${max}" step="1" value="${cur}" data-glayer aria-label="Layer"/><span class="tp-val" data-glabel>${cur + 1} / ${max + 1}</span>`;
   },
   bind(host) {
     host.querySelector('[data-glayer]')?.addEventListener('input', (e) => { gLayer = Number((e.target as HTMLInputElement).value); host.querySelector('[data-glabel]')!.textContent = `${gLayer + 1} / ${(e.target as HTMLInputElement).max ? Number((e.target as HTMLInputElement).max) + 1 : ''}`; applyGcode(); });

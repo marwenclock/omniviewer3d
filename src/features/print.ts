@@ -183,6 +183,11 @@ registerPanel({
       <p class="note">Target: about <b data-tricount>${fmtInt(Math.round(tris * reduceTarget))}</b> triangles. Shape-preserving simplification (meshoptimizer).</p>${lossNote()}
       <div class="btn-row"><button class="btn-solid" data-reduce>Reduce</button></div>`;
   },
+  pill() {
+    const tris = targetMeshes().reduce((n, m) => n + (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3, 0);
+    return `<input type="range" min="0.02" max="0.95" step="0.01" value="${reduceTarget}" data-ratio aria-label="Share of triangles to keep"/><span class="tp-val"><span data-ratiolabel>${Math.round(reduceTarget * 100)}%</span> · <span data-tricount>${fmtInt(Math.round(tris * reduceTarget))}</span></span>
+      <button class="tp-go" data-reduce>Reduce</button>`;
+  },
   bind(host) {
     const tris = targetMeshes().reduce((n, m) => n + (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3, 0);
     host.querySelector('[data-ratio]')?.addEventListener('input', (e) => {
@@ -278,6 +283,10 @@ registerPanel({
       <div class="field-label" style="margin-top:12px">Drain hole (resin)</div>
       <div class="row"><label>Diameter</label><select data-drain>${[2, 3, 4, 5, 6].map((d) => `<option value="${d}" ${d === 3 ? 'selected' : ''}>${d} mm</option>`).join('')}</select><button class="chip" data-draingo>${'Add at lowest point'}</button></div>
       <p class="note">Resin trapped in a hollow part can crack it. Add at least one hole near the build plate, more for large parts.</p>`;
+  },
+  pill() {
+    return `<label class="tp-field">Wall <input type="number" step="0.1" min="0" value="${round(mmToUnits(hollowWallMm))}" data-wall aria-label="Wall thickness"/> ${UNITS[ctx.unit()].short}</label>
+      <button class="tp-go" data-hollow>Hollow</button>`;
   },
   bind(host) {
     host.querySelector('[data-wall]')?.addEventListener('change', (e) => { hollowWallMm = unitsToMm(Number((e.target as HTMLInputElement).value)) || hollowWallMm; });
@@ -385,6 +394,10 @@ registerPanel({
         <p class="note"><span class="swatch-unknown"></span> Grey = unknown: no opposite wall was found (open surface or a ray that escaped). That is not the same as safe.</p>` : ''}
       <div class="btn-row"><button class="btn-solid" data-thick>${thinShare >= 0 ? 'Check again' : 'Check thickness'}</button>${thinShare >= 0 ? '<button class="chip" data-thickclear>Clear colours</button>' : ''}</div>
       <p class="note">Typical minimums: 0.8 mm for FDM, 0.5 mm for resin. Thickness is sampled straight inwards from each vertex in real-world size, so small features between vertices can be missed.</p>`;
+  },
+  pill() {
+    return `<label class="tp-field">Min wall <input type="number" step="0.1" min="0" value="${round(mmToUnits(minThicknessMm))}" data-min aria-label="Minimum wall"/> ${UNITS[ctx.unit()].short}</label>
+      <button class="tp-go" data-thick>${thinShare >= 0 ? 'Check again' : 'Check'}</button>`;
   },
   bind(host) {
     host.querySelector('[data-min]')?.addEventListener('change', (e) => { minThicknessMm = unitsToMm(Number((e.target as HTMLInputElement).value)) || minThicknessMm; });

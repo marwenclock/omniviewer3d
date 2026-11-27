@@ -1,8 +1,36 @@
 import * as THREE from 'three';
 import type { Viewer } from '../viewer';
 import type { History } from '../history';
+import { topology } from './features';
 
-export type PaintMode = 'object' | 'brush';
+/**
+ * brush: free strokes · area: a face region up to the model's edges (creases, like the colour boundaries a slicer
+ * shows) · piece: one connected body of the mesh · object: the whole part (material colour).
+ */
+export type PaintMode = 'object' | 'brush' | 'area' | 'piece';
+
+/**
+ * Triangles reachable from t0 without crossing a model edge (area) or at all (piece). Uses the welded topology of
+ * the measure tool, so triangle t here is triangle t of the geometry (same order for indexed and non-indexed).
+ */
+export function regionFrom(geo: THREE.BufferGeometry, t0: number, mode: 'area' | 'piece'): Uint32Array | null {
+  const T = topology(geo);
+  if (!T || t0 < 0 || t0 >= T.triCount) return null;
+  const { triE, eT0, eT1, eFeat } = T;
+  const seen = new Uint8Array(T.triCount);
+  const out: number[] = [t0];
+  seen[t0] = 1;
+  for (let i = 0; i < out.length; i++) {
+    const t = out[i];
+    for (let k = 0; k < 3; k++) {
+      const e = triE[3 * t + k];
+      if (e < 0 || (mode === 'area' && eFeat[e])) continue;
+      const o = eT0[e] === t ? eT1[e] : eT0[e];
+      if (o >= 0 && !seen[o]) { seen[o] = 1; out.push(o); }
+    }
+  }
+  return Uint32Array.from(out);
+}
 
 interface MeshState {
   mesh: THREE.Mesh;
@@ -43,6 +71,9 @@ export class PaintTool {
   private centroids = new WeakMap<THREE.BufferGeometry, Float32Array>();
   private cursor: THREE.Mesh;
   private listeners = new Set<() => void>();
+  /** region under the cursor in area / piece mode, drawn as a see-through preview of the fill */
+  private preview: THREE.Mesh;
+  private region: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mode: PaintMode; tris: Uint32Array; set: Set<number> } | null = null;
   onPainted: () => void = () => {};
 
   constructor(private viewer: Viewer, private history: History) {
@@ -56,6 +87,74 @@ export class PaintTool {
     this.cursor.raycast = () => {};
     this.cursor.userData.noShot = true;
     viewer.overlay.add(this.cursor);
+    this.preview = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
+    Object.assign(this.preview.userData, { helper: true, noShot: true });
+    this.preview.raycast = () => {};
+    this.preview.matrixAutoUpdate = false;
+    this.preview.visible = false;
+    this.preview.renderOrder = 998;
+    viewer.overlay.add(this.preview);
+  }
+
+  get fills() { return this.mode === 'area' || this.mode === 'piece'; }
+
+  /** The fill region around a hit triangle, cached while the cursor stays inside it. */
+  private regionAt(mesh: THREE.Mesh, face: number) {
+    const r = this.region;
+    if (r && r.mesh === mesh && r.geo === mesh.geometry && r.mode === this.mode && r.set.has(face)) return r;
+    const tris = regionFrom(mesh.geometry, face, this.mode as 'area' | 'piece');
+    if (!tris) return null;
+    this.region = { mesh, geo: mesh.geometry, mode: this.mode, tris, set: new Set(tris) };
+    this.region.set = tris.length > 400000 ? new Set([face]) : this.region.set; // huge regions: recompute instead of a giant set
+    return this.region;
+  }
+
+  private showPreview(hit: THREE.Intersection | null) {
+    if (!hit || !this.fills || !(hit.object as any).isMesh || hit.faceIndex == null) { this.preview.visible = false; return; }
+    const mesh = hit.object as THREE.Mesh;
+    const prev = this.region;
+    const r = this.regionAt(mesh, hit.faceIndex);
+    if (!r) { this.preview.visible = false; return; }
+    if (r !== prev || !this.preview.visible) {
+      const g = mesh.geometry, pos = g.attributes.position, idx = g.index;
+      const arr = new Float32Array(r.tris.length * 9);
+      r.tris.forEach((t, i) => {
+        for (let k = 0; k < 3; k++) {
+          const v = idx ? idx.getX(3 * t + k) : 3 * t + k;
+          arr[i * 9 + k * 3] = pos.getX(v); arr[i * 9 + k * 3 + 1] = pos.getY(v); arr[i * 9 + k * 3 + 2] = pos.getZ(v);
+        }
+      });
+      this.preview.geometry.dispose();
+      const pg = new THREE.BufferGeometry();
+      pg.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      this.preview.geometry = pg;
+    }
+    (this.preview.material as THREE.MeshBasicMaterial).color.copy(this.color);
+    this.viewer.overlay.updateMatrixWorld();
+    this.preview.matrix.copy(this.viewer.overlay.matrixWorld).invert().multiply(mesh.matrixWorld);
+    this.preview.matrixWorldNeedsUpdate = true;
+    this.preview.visible = true;
+  }
+
+  /** Colours a whole region (area / piece) with vertex colours. */
+  private paintRegion(mesh: THREE.Mesh, face: number) {
+    const r = this.regionAt(mesh, face);
+    if (!r) return;
+    const tris = r.tris;
+    this.prepareForBrush(mesh);
+    const col = mesh.geometry.attributes.color as THREE.BufferAttribute;
+    const arr = col.array as Float32Array;
+    const { r: cr, g: cg, b: cb } = this.color;
+    for (let i = 0; i < tris.length; i++) for (let k = 0; k < 3; k++) {
+      const o = (tris[i] * 3 + k) * 3;
+      arr[o] = cr; arr[o + 1] = cg; arr[o + 2] = cb;
+    }
+    col.needsUpdate = true;
+    // prepareForBrush may have swapped in a non-indexed copy: same triangle order, so the region stays valid.
+    if (this.region) { this.region.geo = mesh.geometry; }
   }
 
   onChange(fn: () => void) { this.listeners.add(fn); }
@@ -64,6 +163,8 @@ export class PaintTool {
   setActive(on: boolean) {
     this.active = on;
     this.cursor.visible = false;
+    this.preview.visible = false;
+    this.region = null;
     this.viewer.controls.enabled = true;
     this.emit();
   }
@@ -88,6 +189,7 @@ export class PaintTool {
     if (!this.active) return;
     const hit = this.viewer.pick(e);
     this.cursor.visible = !!hit && this.mode === 'brush';
+    this.showPreview(this.mode === 'object' ? null : hit);
     if (hit && hit.face) {
       const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
       this.cursor.position.copy(hit.point).addScaledVector(n, this.worldRadius() * 0.02);
@@ -108,8 +210,13 @@ export class PaintTool {
       this.apply(hit);
       this.lastHit = hit.point.clone();
       this.lastObject = hit.object;
+    } else if (this.stroke && hit && this.fills && hit.faceIndex != null) {
+      // Dragging across several areas fills each one once.
+      const r = this.region;
+      if (!(r && r.mesh === hit.object && r.set.has(hit.faceIndex) && this.filled.has(r))) this.apply(hit);
     }
   }
+  private filled = new WeakSet<object>();
 
   onPointerUp() {
     if (!this.stroke) return;
@@ -119,7 +226,7 @@ export class PaintTool {
     this.stroke = null;
     if (!before.length) return;
     this.history.push({
-      label: this.mode === 'brush' ? 'Brush paint' : 'Paint part',
+      label: ({ brush: 'Brush paint', area: 'Fill area', piece: 'Paint piece', object: 'Paint part' } as const)[this.mode],
       undo: () => { before.forEach(restore); this.onPainted(); },
       redo: () => { after.forEach(restore); this.onPainted(); },
     });
@@ -130,6 +237,7 @@ export class PaintTool {
     const mesh = hit.object as THREE.Mesh;
     if (!this.stroke!.has(mesh)) this.stroke!.set(mesh, snapshot(mesh));
     if (this.mode === 'object') this.paintObject(mesh, hit.face?.materialIndex ?? 0);
+    else if (this.fills) { this.paintRegion(mesh, hit.faceIndex ?? -1); if (this.region) this.filled.add(this.region); }
     else this.paintBrush(mesh, hit.point, hit.faceIndex ?? -1);
   }
 

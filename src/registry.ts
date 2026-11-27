@@ -9,7 +9,12 @@ export interface ToolPanel {
   hint: string;
   /** HTML for the details panel section */
   render(): string;
-  /** wire up events inside the rendered section */
+  /**
+   * The tool's main control as a compact pill that floats under the model while the tool is on (a slider and its
+   * apply button). Uses the same data- attributes as render(), so bind() wires it up too.
+   */
+  pill?(): string;
+  /** wire up events inside the rendered section (also called on the floating pill) */
   bind?(host: HTMLElement): void;
   onActivate?(): void;
   onDeactivate?(): void;

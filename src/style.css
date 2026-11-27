@@ -1543,3 +1543,61 @@ body.qc-has-rows .drop-zone .dz-title { font-size: 14px; }
 .measure-sel .ms-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--muted); padding: 1px 0; }
 .measure-sel .ms-row b { font-family: var(--mono); font-weight: 500; color: var(--hi); }
 .measure-sel .ms-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* ------------------------------------------------------------ floating tool pill (features/toolpill.ts)
+   The active tool's main control, under the model: the same glass as the selection bar. */
+.toolpill {
+  position: absolute; left: 0; top: 0; z-index: 9; display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 12px;
+  max-width: calc(100% - 24px); border: 1px solid var(--line-2); border-radius: 999px; pointer-events: auto; will-change: transform;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42); font-size: 12px; color: var(--ink-2); white-space: nowrap;
+}
+.toolpill.hidden { display: none; }
+.tp-name { font-weight: 600; color: var(--ink); padding-right: 2px; }
+.toolpill input[type='range'] { width: 200px; min-width: 90px; flex: 1 1 200px; margin: 0 4px; }
+.toolpill input[type='range'].tp-short { width: 90px; flex: 0 1 90px; }
+.tp-val { font: 11.5px var(--mono); color: var(--ink); min-width: 36px; }
+.tp-seg { display: inline-flex; padding: 2px; gap: 1px; border-radius: 999px; background: var(--surface-2); }
+.tp-seg button { height: 26px; padding: 0 10px; border-radius: 999px; color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.tp-seg button:hover { color: var(--ink); }
+.tp-seg button.active { background: var(--ink); color: var(--bg); }
+.tp-btn, .tp-x, .tp-go {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 30px; padding: 0 7px;
+  border-radius: 999px; color: var(--ink-2); font-size: 12px; font-weight: 500;
+}
+.tp-btn svg, .tp-x svg, .tp-go svg { width: 16px; height: 16px; flex: none; }
+.tp-btn:hover:not(:disabled), .tp-x:hover { background: var(--surface-2); color: var(--ink); }
+.tp-btn.active { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
+.tp-btn:disabled { opacity: 0.35; cursor: default; }
+.tp-go { padding: 0 14px; background: var(--ink); color: var(--bg); font-weight: 600; }
+.tp-go:hover { opacity: 0.88; }
+.tp-x { background: var(--ink); color: var(--bg); width: 30px; padding: 0; }
+.tp-x:hover { background: var(--ink) !important; color: var(--bg) !important; opacity: 0.88; }
+.tp-swatches { display: inline-flex; align-items: center; gap: 4px; }
+.tp-swatches button, .tp-color {
+  position: relative; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.45); cursor: pointer;
+}
+.tp-swatches button.active { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--ink); }
+.tp-color { overflow: hidden; background-image: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
+.tp-color input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+/* Phones: docked above the bottom bar, scrolls sideways if it doesn't fit */
+@media (max-width: 700px) {
+  .toolpill.docked {
+    left: 10px; right: 10px; top: auto; bottom: calc(var(--bar) + var(--sheet-h, 0px) + 60px); transform: none !important;
+    max-width: none; overflow-x: auto; scrollbar-width: none; padding-left: 10px;
+  }
+  .toolpill.docked input[type='range'] { min-width: 110px; }
+  .toolpill.docked .tp-name { display: none; }
+  /* the Done chip below already closes the tool */
+  .toolpill.docked .tp-x { display: none; }
+}
+/* The pill replaces the in-view hint line for tools that have one: one thing to look at, not two. */
+body.has-toolpill .tool-hint { opacity: 0.85; }
+
+/* separate pieces inside one mesh (features/pieces.ts) */
+.pieces-card { margin-top: 10px; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; }
+.pieces-card b { display: block; font-size: 12.5px; color: var(--ink); }
+.pieces-card small { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.pieces-card .btn-row { margin-top: 8px; }
+.tp-field { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.tp-field input[type='number'] { width: 64px; height: 26px; padding: 0 8px; border-radius: 999px; }

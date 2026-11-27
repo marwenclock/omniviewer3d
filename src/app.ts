@@ -15,7 +15,7 @@ import { EXPORT_FORMATS, exportModel, exportObject, download, describeExport, ex
 import { icon, hydrateIcons } from './icons';
 import { CONFIG } from './config';
 import { panels, commands, registerCommand } from './registry';
-import { ctx } from './context';
+import { ctx, modelMeshes } from './context';
 import { MATERIALS, estimate } from './cost';
 import { listRecent, addRecent, removeRecent, clearRecent, entryFiles, type RecentEntry } from './recent';
 import { guessUnit, defaultUp, rememberPref, forgetPref, rememberedPref, UNIT_SOURCE_LABEL, type UnitSource, type UnitGuess } from './units';
@@ -32,8 +32,11 @@ import { compareWith } from './features/compare';
 import { initQuickConvert, openQuickConvert, closeQuickConvert, qcAdd, qcIsOpen } from './features/quickconvert';
 import { initViewCube } from './features/viewcube';
 import { initSelectionBar } from './features/selbar';
+import { initToolPill } from './features/toolpill';
+import { pieceCount, splitIntoPieces, savePiecesAsStl } from './features/pieces';
 // eslint-disable-next-line no-var -- read by updateToolbar(), which runs before the bar is created
 var selBar: ReturnType<typeof initSelectionBar> | undefined;
+var toolPill: ReturnType<typeof initToolPill> | undefined;
 
 // ------------------------------------------------------------------ helpers
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -581,9 +584,14 @@ function setTool(t: Tool) {
   const hints: Record<string, string> = {
     none: '',
     measure: isTouch() ? 'Tap a hole or edge, or two points for a distance' : 'Point at a hole or edge, or click a corner or face to start a distance · Esc to stop',
-    paint: paint.mode === 'brush' ? (isTouch() ? 'Drag a finger to brush colour onto the surface' : 'Click and drag to brush colour onto the surface · Esc to stop') : (isTouch() ? 'Tap a part to colour it' : 'Click a part to colour it · Esc to stop'),
-    section: 'Drag the slider in the details panel to cut through the model',
-    explode: 'Use the slider in the details panel to pull parts apart',
+    paint: ({
+      brush: isTouch() ? 'Drag a finger to brush colour onto the surface' : 'Click and drag to brush colour onto the surface · Esc to stop',
+      area: isTouch() ? 'Tap an area: it fills up to the model\'s edges' : 'Point at an area to preview it, click to fill it up to the model\'s edges · Esc to stop',
+      piece: isTouch() ? 'Tap a piece to colour that whole body' : 'Click a piece to colour that whole body · Esc to stop',
+      object: isTouch() ? 'Tap a part to colour it' : 'Click a part to colour it · Esc to stop',
+    } as const)[paint.mode],
+    section: 'Drag the slider under the model to move the cut',
+    explode: 'Drag the slider under the model to pull the parts apart',
   };
   const panel = panels.get(t);
   panel?.onActivate?.();
@@ -597,7 +605,8 @@ function setTool(t: Tool) {
   if (t === 'measure') measureStepHint(); // names the current measure mode's first step
   if (isPhone() && t !== 'none') {
     openSheet('right');
-    document.body.classList.toggle('sheet-min', ['measure', 'paint', 'layflat'].includes(t));
+    // Tools with a floating pill are driven from the pill: keep the sheet small so the model stays in view.
+    document.body.classList.toggle('sheet-min', ['measure', 'paint', 'layflat', 'explode', 'section'].includes(t) || !!panel?.pill);
     setTimeout(ensureModelVisible, 400); // the sheet must not push the model out of view (CA-09)
   }
   syncCtxBar();
@@ -1733,11 +1742,17 @@ function toolSection(): string {
       const hex = '#' + paint.color.getHexString(THREE.SRGBColorSpace);
       return `<div class="section">
         <div class="section-head"><span class="section-title">Paint</span></div>
-        <div class="seg"><button class="${paint.mode === 'brush' ? 'active' : ''}" data-pmode="brush">Brush</button><button class="${paint.mode === 'object' ? 'active' : ''}" data-pmode="object">Whole part</button></div>
+        <div class="seg">${([['brush', 'Brush'], ['area', 'Area'], ['piece', 'Piece'], ['object', 'Whole part']] as const).map(([k, l]) => `<button class="${paint.mode === k ? 'active' : ''}" data-pmode="${k}">${l}</button>`).join('')}</div>
+        <p class="note" style="margin-top:6px">${({
+          brush: 'Brush colour freely onto the surface.',
+          area: 'Fills one face area up to the model’s edges (the creases a slicer shows as colour borders). Drag across several areas to fill them all.',
+          piece: 'Colours one whole body. Files made for multi-colour printing often hold one body per colour.',
+          object: 'Changes the colour of the whole part.',
+        } as const)[paint.mode]}</p>
         <div class="row"><label>Colour</label><input type="color" value="${hex}" data-pcolor /><span class="grow"></span></div>
         <div class="palette">${PAINT_COLORS.map((c) => `<button style="background:${c}" data-pswatch="${c}" class="${c === hex ? 'active' : ''}" aria-label="${c}"></button>`).join('')}</div>
         ${paint.mode === 'brush' ? `<div class="row"><label>Brush size</label><input type="range" min="0.005" max="0.2" step="0.005" value="${paint.radius}" data-pradius /></div>` : ''}
-        <p class="note">Brush paint is saved as vertex colours, so it is kept when you export to GLB or PLY. Undo with Ctrl+Z.</p>
+        <p class="note">Painted colours are saved as vertex colours, so they are kept when you export to GLB, PLY or 3MF. Undo with Ctrl+Z.</p>
       </div>`;
     }
     case 'section': {
@@ -1778,6 +1793,7 @@ function selectionSection(): string {
         <button class="chip" data-msel="hide">${icon('eyeoff')}Hide</button>
         <button class="chip" data-msel="group">${icon('group')}Group</button>
         <button class="chip" data-msel="export">${icon('download')}Export selected</button>
+        <button class="chip" data-msel="stl">${icon('download')}One STL each</button>
         <button class="chip danger" data-msel="delete">${icon('trash')}Delete</button>
       </div>
       <p class="note">Ctrl / Shift-click parts to add or remove them. Move, rotate and scale act on the first part.</p></div>`;
@@ -1814,6 +1830,12 @@ function selectionSection(): string {
     ${ifc.psets ? Object.entries(ifc.psets).map(([set, props]) => `<details class="pset"><summary>${esc(set)}</summary><dl class="kv">${Object.entries(props).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>`).join('') : ''}
     <div class="btn-row"><button class="chip" data-ifcsame="type">Select all ${esc(ifc.type)}</button>${ifc.storey ? `<button class="chip" data-ifcsame="storey">Show only this storey</button>` : ''}</div>
     <p class="note">Element data is shown here only; mesh exports (GLB, OBJ, STL…) don't keep IFC properties.</p></div>` : '';
+  const pieces = mesh && !(mesh as any).isInstancedMesh ? pieceCount(mesh) : 1;
+  const childMeshes = !mesh ? modelMeshes(o).length : 0;
+  const piecesHtml = pieces > 1
+    ? `<div class="pieces-card"><div><b>${pieces} separate pieces</b><small>This part holds ${pieces} bodies, like the parts a slicer lets you give their own filament.</small></div>
+        <div class="btn-row"><button class="chip" data-pieces="split">${icon('group')}Split into pieces</button><button class="chip" data-pieces="xray">${icon('layers')}See inside (X-ray)</button></div></div>`
+    : childMeshes > 1 ? `<div class="btn-row"><button class="chip" data-pieces="stl">${icon('download')}Save each part as STL (${childMeshes})</button></div>` : '';
   return `${ifcHtml}<div class="section">
     <div class="section-head"><span class="section-title">${t('Selection')}</span><span class="grow"></span>
       <button class="node-btn" style="opacity:1" data-sel="deselect" aria-label="Deselect">${icon('x')}</button></div>
@@ -1834,8 +1856,10 @@ function selectionSection(): string {
       <button class="chip" data-sel="mz">${icon('mirror')}Z</button>
       <button class="chip" data-sel="reset">${icon('reset')}Reset</button>
       ${!isRoot && o.children.filter((c) => !c.userData.helper).length ? `<button class="chip" data-sel="ungroup">${icon('group')}Ungroup</button>` : ''}
+      <button class="chip" data-sel="export">${icon('download')}Save as…</button>
       ${isRoot ? '' : `<button class="chip danger" data-sel="delete">${icon('trash')}Delete</button>`}
     </div>
+    ${piecesHtml}
   </div>${matHtml}`;
 }
 
@@ -1945,6 +1969,15 @@ function modelSection(): string {
       <dt>${t('Watertight')}</dt><dd>${s.meshes ? closedText : '–'}</dd>` : ''}
       <dt>${t('Centre')}</dt><dd>${fmtNum(toDisp(s.center.x), 2)}, ${fmtNum(toDisp(s.center.y), 2)}, ${fmtNum(toDisp(s.center.z), 2)}</dd>
     </dl>
+    ${(() => {
+      // One mesh holding several bodies (a logo in a base): offer to split it, like a slicer's "split to objects".
+      const ms = modelMeshes(viewer.model, true);
+      if (ms.length > 40 || editor.selected) return '';
+      const n = ms.reduce((k, m) => k + (pieceCount(m) > 1 ? pieceCount(m) : 0), 0);
+      return n ? `<div class="pieces-card"><div><b>${n} separate pieces inside</b><small>Bodies a slicer can give their own filament. Split them into parts to pick, isolate or save each one as STL.</small></div>
+        <div class="btn-row"><button class="chip" data-pieces="split">${icon('group')}Split into pieces</button><button class="chip" data-pieces="xray">${icon('layers')}X-ray</button></div></div>`
+        : ms.length > 1 ? `<div class="btn-row"><button class="chip" data-pieces="stl">${icon('download')}Save each part as STL (${ms.length})</button></div>` : '';
+    })()}
     ${s.invertedParts ? `<p class="note warn-note">${s.invertedParts} part${s.invertedParts === 1 ? ' is' : 's are'} inside-out; volume counts ${s.invertedParts === 1 ? 'its' : 'their'} absolute size.</p>` : ''}
   </div>
   ${anim}
@@ -2031,6 +2064,7 @@ function renderDetails() {
   if (!viewer.model) {
     host.innerHTML = `<div class="empty">Open a model to see its size, parts and tools.</div>`;
     hydrateIcons(host);
+    toolPill?.sync();
     return;
   }
   const scroll = host.scrollTop;
@@ -2041,6 +2075,66 @@ function renderDetails() {
   const p = panels.get(state.tool);
   const sec = host.querySelector<HTMLElement>('[data-panel]');
   if (p?.bind && sec) p.bind(sec);
+  toolPill?.sync();
+}
+
+// ------------------------------------------------------------------ floating tool pill (features/toolpill.ts)
+/** The active tool's main control, floating under the model. Same data- attributes as the Details panel. */
+function toolPillHtml(): string {
+  const tool = state.tool;
+  const close = `<button class="tp-x" data-tool="${tool}" data-tip="${t('Done')} (Esc)" aria-label="${t('Done')}">${icon('check')}</button>`;
+  const name = (n: string) => `<span class="tp-name">${esc(t(n))}</span>`;
+  switch (tool) {
+    case 'explode': {
+      // One mesh holding several bodies has nothing to pull apart until it is split.
+      const ms = modelMeshes(viewer.model, true);
+      const canSplit = ms.length <= 4 && ms.some((m) => pieceCount(m) > 1);
+      if (canSplit) return `${name('Explode')}<span class="tp-val" style="font-family:inherit">${ms.length === 1 ? 'One part, several bodies' : 'Bodies share a part'}</span><button class="tp-go" data-pieces="split">${icon('group')}Split into pieces</button>${close}`;
+      return `${name('Explode')}<input type="range" min="0" max="2" step="0.01" value="${viewer.explode}" data-explode aria-label="Explode amount" />
+        <button class="tp-btn" data-tpreset ${viewer.explode ? '' : 'disabled'} data-tip="Put the parts back" aria-label="Put the parts back">${icon('reset')}</button>${close}`;
+    }
+    case 'section': {
+      const s = viewer.section;
+      return `${name('Section')}<div class="tp-seg">${(['x', 'y', 'z'] as Axis[]).map((a) => `<button class="${s.axis === a ? 'active' : ''}" data-secaxis="${a}">${a.toUpperCase()}</button>`).join('')}</div>
+        <input type="range" min="0" max="1" step="0.001" value="${s.t}" data-secpos aria-label="Section position" />
+        <button class="tp-btn ${s.flip ? 'active' : ''}" data-tpflip aria-pressed="${s.flip}" data-tip="Flip the side that is cut away" aria-label="Flip side">${icon('mirror')}</button>
+        <button class="tp-btn tp-txt" data-tool="cut" data-tip="Cut the model in two here">${icon('cut')}<span>Cut</span></button>${close}`;
+    }
+    case 'paint': {
+      const hex = '#' + paint.color.getHexString(THREE.SRGBColorSpace);
+      const modes = [['brush', 'Brush', 'Free strokes'], ['area', 'Area', 'Fills a face area up to the model\'s edges'], ['piece', 'Piece', 'One whole body of the mesh'], ['object', 'Part', 'The whole part (material colour)']] as const;
+      return `<div class="tp-seg">${modes.map(([k, l, tip]) => `<button class="${paint.mode === k ? 'active' : ''}" data-pmode="${k}" data-tip="${tip}">${l}</button>`).join('')}</div>
+        <div class="tp-swatches">${PAINT_COLORS.slice(0, 8).map((c) => `<button style="background:${c}" data-pswatch="${c}" class="${c === hex ? 'active' : ''}" aria-label="${c}"></button>`).join('')}
+        <label class="tp-color" data-tip="Any colour" style="background:${hex}"><input type="color" value="${hex}" data-pcolor aria-label="Colour" /></label></div>
+        ${paint.mode === 'brush' ? `<input type="range" class="tp-short" min="0.005" max="0.2" step="0.005" value="${paint.radius}" data-pradius aria-label="Brush size" data-tip="Brush size" />` : ''}${close}`;
+    }
+    case 'measure': {
+      const n = measure.list.length;
+      return `${name('Measure')}<div class="tp-seg">${([['select', 'Faces & edges'], ['distance', 'Points']] as const).map(([k, l]) => `<button class="${(k === 'select' ? measure.mode === 'select' : measure.mode !== 'select') ? 'active' : ''}" data-mmode="${k}">${l}</button>`).join('')}</div>
+        ${n ? `<button class="tp-btn tp-txt" data-mclear data-tip="Remove all measurements">${icon('trash')}<span>${n}</span></button>` : ''}${close}`;
+    }
+  }
+  const p = panels.get(tool);
+  const inner = p?.pill?.();
+  return inner ? `${name(p!.label)}${inner}${close}` : '';
+}
+function initPill() {
+  toolPill = initToolPill({
+    html: toolPillHtml,
+    bind: (host) => { const p = panels.get(state.tool); if (p?.pill && p.bind) p.bind(host); },
+  }) ?? undefined;
+  const el = toolPill?.el;
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tpreset],[data-tpflip]');
+    if (b?.dataset.tpreset !== undefined) { viewer.setExplode(0); updateBadges(); }
+    if (b?.dataset.tpflip !== undefined) viewer.setSection({ flip: !viewer.section.flip });
+    onPanelClick(e);
+    renderDetailsSoon();
+  });
+  el.addEventListener('input', (e) => { onPanelInput(e); if ((e.target as HTMLElement).dataset.explode !== undefined) toolPill!.el.querySelector<HTMLButtonElement>('[data-tpreset]')?.toggleAttribute('disabled', !viewer.explode); });
+  // A slider let go: bring the Details panel in line with the pill.
+  el.addEventListener('change', (e) => { onPanelChange(e); renderDetailsSoon(); });
 }
 
 // ------------------------------------------------------------------ update glow
@@ -2148,8 +2242,15 @@ function glowChanges(host: HTMLElement, before: Map<string, string>) {
 // Details panel events (delegated)
 const details = $('#rtab-details');
 for (const ev of ['pointerdown', 'keydown', 'input', 'change'] as const) details.addEventListener(ev, () => { lastPanelInput = performance.now(); }, true);
-details.addEventListener('click', (e) => {
+const onPanelClick = (e: Event) => {
   const t = e.target as HTMLElement;
+  const pc = t.closest<HTMLElement>('[data-pieces]');
+  if (pc) {
+    if (pc.dataset.pieces === 'split') splitIntoPieces();
+    if (pc.dataset.pieces === 'xray') { viewer.setDisplayMode(viewer.displayMode === 'xray' ? 'shaded' : 'xray'); updateToolbar(); }
+    if (pc.dataset.pieces === 'stl') savePiecesAsStl();
+    return;
+  }
   const el = t.closest<HTMLElement>('[data-sel],[data-msel],[data-ifcsame],[data-mremove],[data-mcopy],[data-mhide],[data-mrefresh],[data-mexport],[data-mclear],[data-mmode],[data-mkeep],[data-mdesel],[data-pmode],[data-pswatch],[data-secaxis],[data-scaleapply],[data-sizeapply],[data-convapply],[data-unitforget],[data-unitremember],[data-animplay],[data-animreset],[data-ptcolor],[data-focus],[data-histundo],[data-reloadorig],[data-showcost]');
   if (!el) return;
   const d = el.dataset;
@@ -2161,6 +2262,7 @@ details.addEventListener('click', (e) => {
     if (d.msel === 'group') editor.groupSelection();
     if (d.msel === 'delete') editor.deleteSelection();
     if (d.msel === 'export') showExportDialog(undefined, undefined, 'selected');
+    if (d.msel === 'stl') { savePiecesAsStl(list.flatMap((x) => modelMeshes(x))); return; }
     renderDetails(); return;
   }
   if ('unitforget' in d && state.ext) { forgetPref(state.ext, 'unit'); state.unitSource = 'user'; toast(`Forgot the saved unit for .${state.ext} files`); renderDetails(); return; }
@@ -2196,6 +2298,7 @@ details.addEventListener('click', (e) => {
       case 'mz': editor.mirror('z'); break;
       case 'reset': editor.resetTransform(); break;
       case 'ungroup': editor.ungroup(o); break;
+      case 'export': showExportDialog(undefined, o === viewer.model ? undefined : o); return;
     }
     renderDetails();
   }
@@ -2243,9 +2346,10 @@ details.addEventListener('click', (e) => {
     }
   }
   if ('convapply' in d) rescaleToUnit(($('[data-convto]') as HTMLSelectElement).value as Unit);
-});
+};
+details.addEventListener('click', onPanelClick);
 
-details.addEventListener('input', (e) => {
+const onPanelInput = (e: Event) => {
   const t = e.target as HTMLInputElement;
   const d = t.dataset;
   if (d.pcolor !== undefined) paint.color.set(t.value);
@@ -2265,9 +2369,10 @@ details.addEventListener('input', (e) => {
     else if (d.mprop === 'opacity') { m.opacity = Number(t.value); m.transparent = m.opacity < 1; }
     else m[d.mprop] = Number(t.value);
   }
-});
+};
+details.addEventListener('input', onPanelInput);
 
-details.addEventListener('change', (e) => {
+const onPanelChange = (e: Event) => {
   const t = e.target as HTMLInputElement;
   const d = t.dataset;
   const o = editor.selected;
@@ -2314,7 +2419,8 @@ details.addEventListener('change', (e) => {
     editor.setMaterial(mesh, idx, { [d.mprop]: value }, 'Edit material');
     renderMaterials();
   }
-});
+};
+details.addEventListener('change', onPanelChange);
 
 function isolate(obj: THREE.Object3D) {
   const allVisible = !viewer.model!.getObjectsByProperty('visible', false).filter((o) => !o.userData.helper).length;
@@ -3034,6 +3140,7 @@ Object.assign(ctx, {
   closeModal: () => modal.close(),
 });
 initFeatures();
+initPill();
 initQuickConvert();
 initViewCube();
 selBar = initSelectionBar((a) => {
@@ -3680,7 +3787,7 @@ window.addEventListener('paste', (e) => {
 const TOOL_TIPS: Record<string, [string, string]> = {
   measure: ['Point at a hole or round edge to see its diameter, or at an edge for its length, then click to keep it. Click a corner or face to measure a distance.', 'Tap a hole or an edge to measure it, or tap two points for a distance. Drag with one finger to orbit between taps.'],
   paint: ['Brush with the left mouse button; hold Alt (or use the right button) to orbit while painting.', 'Paint with one finger; use two fingers to orbit and zoom.'],
-  section: ['Drag the slider in Details to move the cut. A badge on the view reminds you while it is on.', 'Move the slider in Details to cut through the model.'],
+  section: ['Drag the slider under the model to move the cut. A badge on the view reminds you while it is on.', 'Move the slider above the bottom bar to cut through the model.'],
   repair: ['Red lines are open edges. The checks cover the mesh only, not printability.', 'Red lines are open edges. The checks cover the mesh only.'],
   thickness: ['Grey means no opposite wall was found (open surface), not "safe".', 'Grey means no opposite wall was found, not "safe".'],
 };

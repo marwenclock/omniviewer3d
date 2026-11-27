@@ -12,6 +12,7 @@ import { initBuild } from './build';
 import { initAssets } from './assets';
 import { initPrepare } from './prepare';
 import { initReport } from './report';
+import { initPieces } from './pieces';
 
 export function initFeatures() {
   initPrintTools();
@@ -27,4 +28,5 @@ export function initFeatures() {
   initAssets();
   initPrepare();
   initReport();
+  initPieces();
 }

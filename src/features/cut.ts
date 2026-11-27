@@ -177,12 +177,23 @@ function cutModel() {
     changes.push({ mesh, parent: mesh.parent!, index: mesh.parent!.children.indexOf(mesh), a, b });
   }
   if (!changes.length) { ctx.toast('The plane does not cross the model. Move the slider first.', true); return; }
+  // A bare STL is one mesh that is the model itself: the halves go into a group that becomes the model.
+  const v = ctx.viewer;
+  const rootCut = changes.find((c) => c.mesh === v.model);
+  const rootGroup = rootCut ? Object.assign(new THREE.Group(), { name: rootCut.mesh.name || 'Model' }) : null;
+  if (rootGroup && rootCut) rootGroup.userData = { ...rootCut.mesh.userData, explodeBase: new THREE.Vector3() };
   const redo = () => {
-    for (const c of changes) { c.parent.remove(c.mesh); c.parent.add(c.a, c.b); }
+    for (const c of changes) {
+      if (c === rootCut) { rootGroup!.add(c.a, c.b); v.swapModel(rootGroup, v.clips, false); continue; }
+      c.parent.remove(c.mesh); c.parent.add(c.a, c.b);
+    }
     ctx.editor.select(null); ctx.viewer.setSection({ enabled: false }); ctx.viewer.refreshMaterials(); ctx.refresh();
   };
   const undo = () => {
-    for (const c of changes) { c.parent.remove(c.a, c.b); c.parent.children.splice(c.index, 0, c.mesh); c.mesh.parent = c.parent; }
+    for (const c of changes) {
+      if (c === rootCut) { v.swapModel(c.mesh, v.clips, false); continue; }
+      c.parent.remove(c.a, c.b); c.parent.children.splice(c.index, 0, c.mesh); c.mesh.parent = c.parent;
+    }
     ctx.editor.select(null); ctx.viewer.refreshMaterials(); ctx.refresh();
   };
   ctx.history.run({ label: 'Cut model', redo, undo });
@@ -256,6 +267,12 @@ registerPanel({
       <p class="note">Applies to: <b>${ctx.editor.selected ? 'the selected part' : 'every visible part the plane crosses'}</b>. Each half gets a flat face and is checked afterwards. Undo with Ctrl+Z.</p>
       <div class="field-label" style="margin-top:12px">Section outline (for laser cutting / CNC)</div>
       <div class="btn-row" style="margin-top:6px"><button class="chip" data-outline="svg">${'Save SVG'}</button><button class="chip" data-outline="dxf">Save DXF</button></div>`;
+  },
+  pill() {
+    const s = ctx.viewer.section;
+    return `<div class="tp-seg">${(['x', 'y', 'z'] as const).map((a) => `<button class="${s.axis === a ? 'active' : ''}" data-cutaxis="${a}">${a.toUpperCase()}</button>`).join('')}</div>
+      <input type="range" min="0" max="1" step="0.001" value="${s.t}" data-cutpos aria-label="Cut position" />
+      <button class="tp-go" data-cut>Cut</button>`;
   },
   bind(host) {
     host.querySelectorAll<HTMLElement>('[data-cutaxis]').forEach((b) => b.addEventListener('click', () => { ctx.viewer.setSection({ axis: b.dataset.cutaxis as any, enabled: true }); ctx.renderDetails(); }));
